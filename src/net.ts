@@ -9,7 +9,8 @@ export const MAX_BODY = 2 * 1024 * 1024;
 export const MAX_REDIRECTS = 5;
 
 export class NetError extends Error {
-  constructor(public code: "blocked" | "invalid_url" | "timeout" | "network" | "redirects", message: string) {
+  /** `redirect` is true when a later hop failed, not the URL the caller supplied. */
+  constructor(public code: "blocked" | "invalid_url" | "timeout" | "network" | "redirects", message: string, public redirect = false) {
     super(message);
   }
 }
@@ -168,7 +169,11 @@ export async function guardedGet(rawUrl: string, o: NetOptions): Promise<Fetched
   let current = rawUrl;
   try {
     for (let hop = 0; ; hop++) {
-      const url = await assertPublicTarget(current, o);
+      let url: URL;
+      try { url = await assertPublicTarget(current, o); } catch (e) {
+        if (hop > 0 && e instanceof NetError) throw new NetError(e.code, `Redirect refused: ${e.message}`, true);
+        throw e;
+      }
       let raw: Raw;
       try {
         raw = o.fetch ? await viaFetch(o.fetch, url.href, headers, ctl.signal) : await viaNode(url, headers, ctl.signal, !!o.allowPrivate);
@@ -182,7 +187,7 @@ export async function guardedGet(rawUrl: string, o: NetOptions): Promise<Fetched
       if (raw.status >= 300 && raw.status < 400 && loc) {
         await raw.read(0).catch(() => {});
         if (hop >= maxRedirects) throw new NetError("redirects", `More than ${maxRedirects} redirects.`);
-        current = new URL(loc, url).href;
+        try { current = new URL(loc, url).href; } catch { throw new NetError("invalid_url", "Redirect refused: invalid Location header.", true); }
         continue;
       }
       let body;

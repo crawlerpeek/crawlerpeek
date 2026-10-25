@@ -41,6 +41,15 @@ describe("seeAsBot", () => {
   });
   it("extracts titles safely", () => {
     expect(extractTitle("<TITLE>\n  A\u0000 &#39;x&#39;  </TITLE>")).toBe("A 'x'");
+    expect(extractTitle('<title lang="de">Hallo</TITLE >')).toBe("Hallo");
+    expect(extractTitle("<titlex>no</titlex><title>yes</title>")).toBe("yes");
+    expect(extractTitle("<title>never closed")).toBe("");
+    expect(extractTitle("İ<title>after dotted capital i</title>")).toBe("after dotted capital i");
+  });
+  it("extracts titles in linear time from hostile pages", () => {
+    const t = Date.now();
+    for (const html of ["<title".repeat(100_000), "<title>".repeat(85_000), "<title ".repeat(85_000), "<title>x</title".repeat(40_000)]) extractTitle(html);
+    expect(Date.now() - t).toBeLessThan(1000);
   });
 });
 
@@ -54,8 +63,36 @@ describe("SSRF guard", () => {
   });
   it("re-checks every redirect hop", async () => {
     const m = mockFetch({ "https://a.com/": { status: 302, headers: { location: "http://169.254.169.254/latest" } } });
-    await expect(seeAsBot("https://a.com/", "GPTBot", { fetch: m.fetch, resolve: publicResolve })).rejects.toThrow(/private/);
+    const r = await seeAsBot("https://a.com/", "GPTBot", { fetch: m.fetch, resolve: publicResolve });
+    expect(r).toMatchObject({ fetched: false, outcome: "error" });
+    expect(r.error).toMatch(/Redirect refused.*private/);
     expect(m.calls.length).toBe(1);
+  });
+  it("reports a refused redirect per bot and for robots.txt instead of aborting the run", async () => {
+    for (const location of ["http://169.254.169.254/", "http://[::1]/", "ftp://x/", "https://a.com:22/"]) {
+      const m = mockFetch({
+        "https://a.com/robots.txt": { status: 302, headers: { location } },
+        "https://a.com/": (ua) => (ua.includes("ClaudeBot") ? { status: 302, headers: { location } } : { body: PAGE }),
+      });
+      const r = await checkAiAccess("https://a.com/", { ...base, fetch: m.fetch, bots: ["GPTBot", "ClaudeBot"] });
+      expect(r.robotsTxt).toMatchObject({ state: "unavailable" });
+      expect(r.robotsTxt.error).toMatch(/Redirect refused/);
+      expect(r.bots[0].robots.access).toBe("unknown");
+      expect(r.bots[0].http?.outcome).toBe("ok");
+      expect(r.bots[1].http).toMatchObject({ outcome: "error", fetched: false });
+      expect(r.bots[1].http?.error).toMatch(/Redirect refused/);
+      expect(failingBots(r, "blocked")).toEqual([]);
+    }
+  });
+  it("still throws when the supplied URL itself is refused", async () => {
+    await expect(checkAiAccess("http://169.254.169.254/", { ...base, resolve: undefined, fetch: mockFetch({}).fetch })).rejects.toThrow(/private/);
+    await expect(checkAiAccess("ftp://a.com/", { ...base, fetch: mockFetch({}).fetch })).rejects.toThrow(/http/);
+  });
+  it("treats a 3xx robots.txt without Location as unreachable", async () => {
+    const m = mockFetch({ "https://a.com/robots.txt": { status: 301, body: "User-agent: *\nDisallow: /\n", headers: { "content-type": "text/plain" } }, "https://a.com/": { body: PAGE } });
+    const r = await checkAiAccess("https://a.com/", { ...base, fetch: m.fetch, bots: ["GPTBot"], http: false });
+    expect(r.robotsTxt).toMatchObject({ state: "unavailable", status: 301 });
+    expect(r.bots[0].robots.access).toBe("unknown");
   });
   it("refuses odd ports and non-http schemes; --allow-private lifts the guard", async () => {
     await expect(seeAsBot("https://a.com:8443/", "GPTBot", { ...base, fetch: mockFetch({}).fetch })).rejects.toThrow(/ports/);
@@ -128,6 +165,24 @@ describe("CLI exit codes", () => {
     expect((await run(["check", "https://a.com", "--fail-on", "weird"], {})).code).toBe(2);
     expect((await run(["check", "http://127.0.0.1/"], {})).code).toBe(2);
     expect((await run(["bogus"], {})).code).toBe(2);
+  });
+  it("2 on unknown options instead of ignoring them", async () => {
+    for (const args of [["check", "https://a.com", "--failon", "blocked"], ["check", "https://a.com", "--fail-on=blocked", "--no-http", "--nope"], ["check", "https://a.com", "-x"], ["see", "https://a.com", "--bot", "GPTBot", "--bots", "x"], ["robots", "--json"], ["mcp", "--verbose"], ["check", "https://a.com", "--json=1"]]) {
+      const r = await run(args, {});
+      expect(r.code, args.join(" ")).toBe(2);
+      expect(r.err).toMatch(/Unknown option|takes no value/);
+    }
+    expect((await run(["check", "https://a.com", "--failon", "x"], {})).err).toContain("Unknown option --failon");
+    expect((await run(["check", "https://a.com", "--failon", "x"], {})).err).toContain("--help");
+  });
+  it("lists none among the valid --fail-on values and documents --delay", async () => {
+    expect((await run(["check", "https://a.com", "--fail-on", "weird"], {})).err).toContain("none, blocked or any-non-200");
+    const h = await run(["check", "--help"], {});
+    expect(h.code).toBe(0);
+    expect(h.out).toContain("--delay");
+  });
+  it("see exits 2 when the request is refused", async () => {
+    expect((await run(["see", "http://127.0.0.1/", "--bot", "GPTBot"], {})).code).toBe(2);
   });
   it("prints robots.txt and version with exit 0", async () => {
     const r = await run(["robots", "--disallow", "/admin/"], {});

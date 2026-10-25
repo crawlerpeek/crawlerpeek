@@ -54,7 +54,8 @@ export type CheckReport = {
   url: string;
   checkedAt: string;
   path: string;
-  robotsTxt: { url: string; state: RobotsState; status: number | null; sitemaps: string[] };
+  /** `error` says why the state is "unavailable" (timeout, HTTP 5xx, refused redirect), else null. */
+  robotsTxt: { url: string; state: RobotsState; status: number | null; error: string | null; sitemaps: string[] };
   bots: BotCheck[];
 };
 
@@ -82,10 +83,25 @@ const CHALLENGE_BODY = /cf-chl|just a moment\.\.\.|attention required! \| cloudf
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
 const clean = (s: string, max: number) => s.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
 
+/** Text of the first `<title>` element. Linear scan with indexOf, no regular expression over the (untrusted) page. */
 export function extractTitle(html: string): string {
-  const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html.slice(0, 600_000));
-  if (!m) return "";
-  const text = m[1].replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (all, e: string) => {
+  const s = html.slice(0, 600_000);
+  const lower = s.replace(/[A-Z]+/g, (c) => c.toLowerCase()); // ASCII only, keeps indices aligned
+  let from = 0;
+  let inner = "";
+  for (;;) {
+    const i = lower.indexOf("<title", from);
+    if (i < 0) return "";
+    from = i + 6;
+    if (!/[\s>/]/.test(lower[from] ?? "")) continue; // <titlex>, <title<...
+    const open = lower.indexOf(">", from);
+    if (open < 0) return "";
+    const close = lower.indexOf("</title", open);
+    if (close < 0) return "";
+    inner = s.slice(open + 1, close);
+    break;
+  }
+  const text = inner.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (all, e: string) => {
     if (e[0] === "#") {
       const code = e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
       return code > 0 && code < 0x110000 ? String.fromCodePoint(code) : "";
@@ -123,10 +139,13 @@ export async function seeAsBot(url: string, bot: string | Bot, opts: CheckOption
       outcome: reason ? "blocked" : f.status >= 200 && f.status < 300 ? "ok" : "error",
     };
   } catch (e) {
-    if (e instanceof NetError && (e.code === "blocked" || e.code === "invalid_url")) throw e;
+    if (isInputError(e)) throw e;
     return { ...base, error: e instanceof Error ? clean(e.message, 200) : "request failed" };
   }
 }
+
+/** Only the user-supplied URL may abort a run; a redirect to a refused target is reported per bot instead. */
+const isInputError = (e: unknown) => e instanceof NetError && (e.code === "blocked" || e.code === "invalid_url") && !e.redirect;
 
 const sleep = (ms: number) => (ms > 0 ? new Promise<void>((r) => setTimeout(r, ms)) : Promise.resolve());
 
@@ -144,15 +163,18 @@ export async function checkAiAccess(url: string, opts: CheckOptions = {}): Promi
   let state: RobotsState = "unavailable";
   let parsed: Parsed | null = null;
   let status: number | null = null;
+  let robotsError: string | null = null;
   try {
     const r = await guardedGet(robotsUrl, net);
     status = r.status;
     const html = /html/i.test(r.contentType) || /^\s*<(!doctype|html)/i.test(r.body);
-    if (r.status >= 500 || r.status === 429) state = "unavailable";
+    if (r.status >= 500 || r.status === 429) { state = "unavailable"; robotsError = `HTTP ${r.status}`; }
+    else if (r.status >= 300 && r.status < 400) { state = "unavailable"; robotsError = `HTTP ${r.status} without a Location header`; }
     else if (r.status >= 400 || html) state = "missing";
     else { state = "ok"; parsed = parseRobots(r.body); }
   } catch (e) {
-    if (e instanceof NetError && (e.code === "blocked" || e.code === "invalid_url")) throw e;
+    if (isInputError(e)) throw e;
+    robotsError = e instanceof Error ? clean(e.message, 200) : "request failed";
   }
   const path = (target.pathname || "/") + target.search;
   const out: BotCheck[] = [];
@@ -169,7 +191,7 @@ export async function checkAiAccess(url: string, opts: CheckOptions = {}): Promi
   }
   return {
     url, checkedAt: new Date().toISOString(), path,
-    robotsTxt: { url: robotsUrl, state, status, sitemaps: parsed?.sitemaps.slice(0, 20) ?? [] },
+    robotsTxt: { url: robotsUrl, state, status, error: robotsError, sitemaps: parsed?.sitemaps.slice(0, 20) ?? [] },
     bots: out,
   };
 }
