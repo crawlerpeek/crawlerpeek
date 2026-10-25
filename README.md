@@ -39,10 +39,13 @@ npx crawlerpeek check https://example.com/pricing --bots GPTBot,ClaudeBot --fail
 npx crawlerpeek check https://example.com --bots all --json
 npx crawlerpeek check https://example.com --no-http          # robots.txt only
 npx crawlerpeek see https://example.com --bot ClaudeBot      # one bot, full detail
+npx crawlerpeek verify 66.249.66.1 --bot Googlebot          # is this IP really Googlebot?
 npx crawlerpeek robots --disallow /admin/,/cart/ --sitemap https://example.com/sitemap.xml
 ```
 
 Exit codes: `0` ok, `1` the `--fail-on` condition was met, `2` usage error (including an unknown option) or request error. `see` exits `0` when the page was fetched, whatever its HTTP status, and `2` when the request failed or was refused.
+
+`verify <ip> [--bot GPTBot] [--json]` checks whether an address from your server logs really belongs to a crawler. It uses only what the operator documents: the published IP-range JSON (Google, OpenAI, Anthropic, Perplexity, Bing, Apple, Common Crawl, DuckDuckGo, Ahrefs) or reverse DNS with forward confirmation (Google, Bing, Apple, Common Crawl, Ahrefs). Without `--bot` every bot with such a method is checked. Each result has `method` (`ip-list`, `reverse-dns` or `none`), `verified` (`true`, `false`, or `null` when it cannot be decided, for example the list is unreachable or the operator documents no method) and a `detail`. Lists are cached for one hour, and nothing is ever sent to the IP. Exit codes: `0` verified for at least one bot, `1` not verified or undecidable, `2` usage error.
 
 | `--fail-on` | Fails when |
 | --- | --- |
@@ -54,7 +57,7 @@ Without `--fail-on` the exit code is `0` whatever the result. `--bots` takes tok
 ## Library
 
 ```ts
-import { checkAiAccess, seeAsBot, generateRobotsTxt, failingBots } from "crawlerpeek";
+import { checkAiAccess, seeAsBot, verifyBotIp, generateRobotsTxt, failingBots } from "crawlerpeek";
 
 const report = await checkAiAccess("https://example.com/pricing", { bots: ["GPTBot", "ClaudeBot"] });
 report.bots[0].robots; // { access: "allowed", pathAllowed: true, matchedGroup: "*" }
@@ -63,6 +66,8 @@ failingBots(report, "blocked"); // ["ClaudeBot"] when it is closed or challenged
 
 await seeAsBot("https://example.com", "PerplexityBot");
 
+await verifyBotIp("66.249.66.1", { bot: "Googlebot" }); // [{ bot: "Googlebot", method: "ip-list", verified: true, detail, source }]
+
 generateRobotsTxt({ disallow: ["/admin/"], blockBots: ["CCBot"], sitemap: "https://example.com/sitemap.xml" });
 ```
 
@@ -70,7 +75,7 @@ generateRobotsTxt({ disallow: ["/admin/"], blockBots: ["CCBot"], sitemap: "https
 
 ## MCP server
 
-`crawlerpeek mcp` speaks the Model Context Protocol over stdio and exposes three read-only tools: `check_ai_access`, `see_as_bot`, `generate_robots_txt`. Results are cached for 10 minutes per call. No LLM is called; the tools only fetch the URL you give them.
+`crawlerpeek mcp` speaks the Model Context Protocol over stdio and exposes four read-only tools: `check_ai_access`, `see_as_bot`, `verify_bot_ip`, `generate_robots_txt`. Results are cached for 10 minutes per call. No LLM is called; the tools only fetch the URL you give them.
 
 <a href="https://cursor.com/install-mcp?name=crawlerpeek&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsImNyYXdsZXJwZWVrIiwibWNwIl19"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cursor.com/deeplink/mcp-install-dark.svg"><img src="https://cursor.com/deeplink/mcp-install-light.svg" alt="Add crawlerpeek to Cursor" height="32"></picture></a>
 &nbsp;

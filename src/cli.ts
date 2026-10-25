@@ -1,4 +1,5 @@
 import { checkAiAccess, failingBots, seeAsBot, type CheckReport, type FailOn } from "./check.js";
+import { verifyBotIp } from "./verify.js";
 import { generateRobotsTxt } from "./robotsgen.js";
 import { serveStdio } from "./mcp.js";
 import { VERSION } from "./version.js";
@@ -8,8 +9,9 @@ const HELP = `crawlerpeek ${VERSION}: can AI crawlers access your site?
 Usage
   crawlerpeek check <url> [--bots a,b|all] [--fail-on none|blocked|any-non-200] [--delay ms] [--json] [--no-http] [--allow-private]
   crawlerpeek see <url> --bot <token> [--json] [--allow-private]
+  crawlerpeek verify <ip> [--bot GPTBot] [--json]
   crawlerpeek robots [--disallow /admin/,/tmp/] [--block-bots CCBot] [--sitemap <url>]
-  crawlerpeek mcp [--allow-private]          MCP server on stdio (3 read-only tools)
+  crawlerpeek mcp [--allow-private]          MCP server on stdio (4 read-only tools)
 
 check   robots.txt decision per bot plus the HTTP status when the page is fetched with each bot's user-agent string.
         Exit code 0 = ok, 1 = --fail-on condition met, 2 = usage or request error.
@@ -20,6 +22,9 @@ check   robots.txt decision per bot plus the HTTP status when the page is fetche
         --no-http              robots.txt only, no page requests
 see     Fetch one URL with one bot's user agent (status, redirects, type, size, title, block-page heuristic).
         Exit code 0 = fetched (any HTTP status), 2 = usage error or the request failed.
+verify  Does this IP address really belong to a crawler? Uses only what the operator documents: its published IP-range list
+        or forward-confirmed reverse DNS. Without --bot, every bot that has such a method is checked. Never connects to the IP.
+        Exit code 0 = verified for at least one bot, 1 = not verified or undecidable (list unreachable, no method), 2 = usage error.
 Note    The user-agent strings are the bots' own and are sent from this machine, not from the operators' IP ranges.
         A site that verifies bot IPs may answer differently to the real bot. Private/loopback targets are refused unless --allow-private.
 `;
@@ -72,7 +77,7 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
   try {
     if (!cmd || cmd === "help" || cmd === "--help" || cmd === "-h") { io.out(HELP); return cmd ? 0 : 2; }
     if (cmd === "--version" || cmd === "-v" || cmd === "version") { io.out(VERSION); return 0; }
-    if (rest.includes("--help") && ["mcp", "robots", "see", "check"].includes(cmd)) { io.out(HELP); return 0; }
+    if (rest.includes("--help") && ["mcp", "robots", "see", "check", "verify"].includes(cmd)) { io.out(HELP); return 0; }
     if (cmd === "mcp") {
       const { flags } = parseArgs(rest, [], ["allow-private"]);
       await serveStdio(process.stdin, process.stdout, { allowPrivate: flags["allow-private"] === true });
@@ -89,6 +94,13 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
       const r = await seeAsBot(pos[0], flags.bot, { allowPrivate: flags["allow-private"] === true });
       io.out(flags.json ? JSON.stringify(r, null, 2) : Object.entries(r).map(([k, v]) => `${pad(k, 12)} ${v === null || v === "" ? "-" : v}`).join("\n"));
       return r.fetched ? 0 : 2;
+    }
+    if (cmd === "verify") {
+      const { flags, pos } = parseArgs(rest, ["bot"], ["json"]);
+      if (pos.length !== 1 || flags.bot === true) { io.err("Usage: crawlerpeek verify <ip> [--bot GPTBot] [--json]"); return 2; }
+      const results = await verifyBotIp(pos[0], { bot: typeof flags.bot === "string" ? flags.bot : undefined });
+      io.out(flags.json ? JSON.stringify(results, null, 2) : results.map((r) => `${pad(r.bot, 20)} ${pad(r.verified === null ? "unknown" : r.verified ? "verified" : "not verified", 12)} ${pad(r.method, 12)} ${r.detail}`).join("\n"));
+      return results.some((r) => r.verified) ? 0 : 1;
     }
     if (cmd === "check") {
       const { flags, pos } = parseArgs(rest, ["bots", "fail-on", "delay"], ["json", "no-http", "allow-private"]);

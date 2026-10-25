@@ -1,12 +1,13 @@
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import { checkAiAccess, seeAsBot, type CheckOptions } from "./check.js";
+import { verifyBotIp } from "./verify.js";
 import { generateRobotsTxt } from "./robotsgen.js";
 import { BOTS } from "./bots.js";
 import { VERSION } from "./version.js";
 
 /**
- * Minimal MCP server over stdio (newline-delimited JSON-RPC 2.0), exactly three read-only tools. No dependencies.
+ * Minimal MCP server over stdio (newline-delimited JSON-RPC 2.0), exactly four read-only tools. No dependencies.
  * Safety: SSRF guard on every request (unless allowPrivate), 10 s timeout, 2 MB body cap, sequential requests, 10 minute cache per call.
  */
 const SUPPORTED = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
@@ -44,6 +45,18 @@ export const TOOLS = [
       },
     },
     annotations: { title: "See a page as a bot", ...readOnly },
+  },
+  {
+    name: "verify_bot_ip",
+    description: "Check whether an IP address really belongs to a crawler (for example one seen in server logs claiming to be Googlebot), using only what the operator documents: its published IP-range list or forward-confirmed reverse DNS. Without bot, checks every bot that has such a method. Reads the operators' public lists; never connects to the IP. verified null means it could not be decided.",
+    inputSchema: {
+      type: "object", additionalProperties: false, required: ["ip"],
+      properties: {
+        ip: { type: "string", description: "IPv4 or IPv6 address." },
+        bot: { type: "string", description: `Bot token to verify against, for example Googlebot. Omit to check all. Known: ${botTokens.join(", ")}.` },
+      },
+    },
+    annotations: { title: "Verify a crawler IP address", ...readOnly },
   },
   {
     name: "generate_robots_txt",
@@ -88,6 +101,10 @@ export function createMcpServer(o: McpOptions = {}) {
       } else if (name === "see_as_bot") {
         if (typeof args.url !== "string" || typeof args.bot !== "string") throw new Error("url and bot are required.");
         result = text(await seeAsBot(args.url, args.bot, net));
+      } else if (name === "verify_bot_ip") {
+        if (typeof args.ip !== "string") throw new Error("ip is required.");
+        if (args.bot !== undefined && typeof args.bot !== "string") throw new Error("bot must be a string.");
+        result = text({ ip: args.ip, results: await verifyBotIp(args.ip, { bot: args.bot as string | undefined, fetch: net.fetch, resolve: net.resolve }) });
       } else if (name === "generate_robots_txt") {
         result = text(generateRobotsTxt({ disallow: strArr(args.disallow, "disallow"), blockBots: strArr(args.block_bots, "block_bots"), sitemap: typeof args.sitemap === "string" ? args.sitemap : undefined }));
       } else {

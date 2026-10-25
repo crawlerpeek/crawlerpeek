@@ -7,14 +7,14 @@ const routes = { "https://a.com/robots.txt": { body: "User-agent: GPTBot\nDisall
 const rpc = (id: number, method: string, params?: Record<string, unknown>) => ({ jsonrpc: "2.0", id, method, params });
 
 describe("MCP server", () => {
-  it("initializes and lists exactly three read-only tools", async () => {
+  it("initializes and lists exactly four read-only tools", async () => {
     const s = createMcpServer();
     const init = (await s.handle(rpc(1, "initialize", { protocolVersion: "2025-06-18" }))) as { result: { protocolVersion: string; serverInfo: { name: string } } };
     expect(init.result.protocolVersion).toBe("2025-06-18");
     expect(init.result.serverInfo.name).toBe("crawlerpeek");
     expect(await s.handle({ jsonrpc: "2.0", method: "notifications/initialized" })).toBeNull();
     const list = (await s.handle(rpc(2, "tools/list"))) as { result: { tools: { name: string; annotations: { readOnlyHint: boolean } }[] } };
-    expect(list.result.tools.map((t) => t.name)).toEqual(["check_ai_access", "see_as_bot", "generate_robots_txt"]);
+    expect(list.result.tools.map((t) => t.name)).toEqual(["check_ai_access", "see_as_bot", "verify_bot_ip", "generate_robots_txt"]);
     expect(list.result.tools.every((t) => t.annotations.readOnlyHint)).toBe(true);
   });
   it("tool call round trip over stdio", async () => {

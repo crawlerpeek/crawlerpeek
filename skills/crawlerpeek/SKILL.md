@@ -19,12 +19,13 @@ Answers one question: can AI crawlers reach this page? For each bot it reports w
 - "Why doesn't ChatGPT (or Claude, Perplexity) see or cite this page?"
 - "Is my robots.txt blocking AI crawlers?" or "Is my firewall / CDN blocking them?"
 - "Write a robots.txt that allows (or blocks) AI bots."
+- "Is this IP in my logs really Googlebot / GPTBot / ClaudeBot?"
 
 Do not use it for general SEO audits, rankings, page speed or content quality.
 
 ## Run it
 
-If the `crawlerpeek` MCP server is connected, use its tools `check_ai_access`, `see_as_bot` and `generate_robots_txt` and skip the commands below. Otherwise use the CLI. Always pass a full URL with `https://`.
+If the `crawlerpeek` MCP server is connected, use its tools `check_ai_access`, `see_as_bot`, `verify_bot_ip` and `generate_robots_txt` and skip the commands below. Otherwise use the CLI. Always pass a full URL with `https://`.
 
 ```sh
 # All default bots for one URL: robots.txt decision plus HTTP status per bot
@@ -32,6 +33,9 @@ npx -y crawlerpeek check https://example.com/page --json
 
 # One bot in detail (status, redirects, content type, size, title, block-page heuristic)
 npx -y crawlerpeek see https://example.com/page --bot ClaudeBot
+
+# Is an IP from the user's logs really the crawler it claims to be?
+npx -y crawlerpeek verify 66.249.66.1 --bot Googlebot --json
 
 # Draft a robots.txt that names AI crawlers explicitly
 npx -y crawlerpeek robots --disallow /admin/,/cart/ --sitemap https://example.com/sitemap.xml
@@ -60,6 +64,7 @@ Interpret it:
 - `unknown`: the robots.txt fetch failed. Treat it as a problem to fix. Many crawlers treat an unreachable robots.txt (5xx) as "disallow everything".
 - A 200 with a short or empty page title can mean the content is rendered by JavaScript. Crawlerpeek does not run JavaScript, and many AI crawlers do not either.
 - `control` bots (Google-Extended, Applebot-Extended) only get a robots.txt decision.
+- `verify`: `verified: true` means the IP is in the operator's published list or passes forward-confirmed reverse DNS; `false` means every documented method says no, so the request only claimed the name; `null` means it could not be decided (no documented method, or a list could not be fetched). Never call an IP fake on `null`.
 
 Limits to state when they matter:
 

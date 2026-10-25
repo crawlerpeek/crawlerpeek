@@ -6,6 +6,8 @@
 - Added: a Claude Code plugin and marketplace. `/plugin marketplace add crawlerpeek/crawlerpeek`, then `/plugin install crawlerpeek@crawlerpeek` installs the MCP server and the skill together.
 - Added: a Claude Desktop extension (`crawlerpeek-<version>.mcpb`, attached to each release) that needs no separate Node.js install. `npm run build:mcpb` builds it.
 - Added: one-click install links for Cursor and VS Code, and install commands for Claude Code and Codex, in the README.
+- Added: `crawlerpeek verify <ip> [--bot GPTBot] [--json]` and `verifyBotIp()` tell you whether an IP address really belongs to a crawler, using only the operator's documented methods: published IP-range lists (Google, OpenAI, Anthropic, Perplexity, Bing, Apple, Common Crawl, DuckDuckGo, Ahrefs) and forward-confirmed reverse DNS (Google, Bing, Apple, Common Crawl, Ahrefs). Bots without a documented method report `method: "none"` and `verified: null`. Exit code `0` verified, `1` not verified or undecidable, `2` usage error.
+- Added: MCP tool `verify_bot_ip`.
 
 ## 0.1.3 - 2026-10-25
 

@@ -8,3 +8,5 @@ export { BOTS, DEFAULT_BOT_TOKENS, CATALOGUE_CHECKED } from "./bots.js";
 export type { Bot, BotKind } from "./bots.js";
 export { isPrivateAddress, NetError } from "./net.js";
 export { VERSION } from "./version.js";
+export { verifyBotIp, inCidr, parseIp, parseIpList, clearVerifyCache, LIST_CACHE_TTL_MS } from "./verify.js";
+export type { VerifyResult, VerifyOptions, VerifyMethod, DnsResolver } from "./verify.js";
