@@ -1,6 +1,6 @@
 {
   "name": "crawlerpeek",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Check whether AI crawlers (GPTBot, ClaudeBot, PerplexityBot, Google-Extended and more) can access your site: robots.txt per bot, live HTTP status as each bot, robots.txt generator, CLI for CI and an MCP server.",
   "keywords": [
     "robots.txt",
@@ -31,15 +31,20 @@
   "sideEffects": false,
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
-  "types": "./dist/types/index.d.ts",
+  "types": "./dist/cjs/index.d.ts",
   "bin": {
     "crawlerpeek": "dist/cli.js"
   },
   "exports": {
     ".": {
-      "types": "./dist/types/index.d.ts",
-      "import": "./dist/esm/index.js",
-      "require": "./dist/cjs/index.js"
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
     },
     "./package.json": "./package.json"
   },

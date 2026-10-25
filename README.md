@@ -42,14 +42,14 @@ npx crawlerpeek see https://example.com --bot ClaudeBot      # one bot, full det
 npx crawlerpeek robots --disallow /admin/,/cart/ --sitemap https://example.com/sitemap.xml
 ```
 
-Exit codes: `0` ok, `1` the `--fail-on` condition was met, `2` usage or request error.
+Exit codes: `0` ok, `1` the `--fail-on` condition was met, `2` usage error (including an unknown option) or request error. `see` exits `0` when the page was fetched, whatever its HTTP status, and `2` when the request failed or was refused.
 
 | `--fail-on` | Fails when |
 | --- | --- |
 | `blocked` | robots.txt closes the path for a bot, or the page answers that bot with 401/403/406/451 or a challenge page |
 | `any-non-200` | as above, or any other status (404, 5xx, redirects that end elsewhere) or a failed request |
 
-Without `--fail-on` the exit code is `0` whatever the result. `--bots` takes tokens or `all`; the default is 15 bots: the main AI crawlers plus Googlebot and Bingbot. A robots.txt that cannot be fetched (timeout, 5xx) is reported as `unknown` and never counts as blocked. Note: this deliberately differs from RFC 9309 §2.3.1.4, where crawlers treat an unreachable robots.txt (5xx) as "disallow everything" (Google does too), so a site whose robots.txt returns 5xx is effectively closed to many bots even though `--fail-on blocked` passes. Treat `unknown` as a problem to fix.
+Without `--fail-on` the exit code is `0` whatever the result. `--bots` takes tokens or `all`; the default is 15 bots: the main AI crawlers plus Googlebot and Bingbot. A robots.txt that cannot be fetched (timeout, 5xx, a redirect that is refused or has no target) is reported as `unknown`, with the reason in `robotsTxt.error`, and never counts as blocked. Note: this deliberately differs from RFC 9309 §2.3.1.4, where crawlers treat an unreachable robots.txt (5xx) as "disallow everything" (Google does too), so a site whose robots.txt returns 5xx is effectively closed to many bots even though `--fail-on blocked` passes. Treat `unknown` as a problem to fix.
 
 ## Library
 
@@ -93,11 +93,11 @@ A composite action lives in `action/`; see `action/README.md`.
 - Google-Extended and Applebot-Extended are robots.txt control tokens, not crawlers: they get a robots.txt decision but are never fetched.
 - Pages are fetched as raw HTML. No JavaScript runs.
 - robots.txt is a request, not access control. Some user-triggered fetchers (ChatGPT-User, Perplexity-User) may not follow it; the operators' documentation says which.
-- The bot list and user-agent strings come from the operators' documentation and can drift; the list is checked against it regularly.
+- The bot list and user-agent strings come from the operators' documentation and can drift; the list was last compared with the operators' documentation on 2026-10-18.
 
 ## Safety limits
 
-One request per bot plus one for robots.txt, sequential with a 300 ms pause (`--delay`); 10 s timeout for the whole request chain; at most 5 redirects, each re-checked; response bodies capped at 2 MB; no cookies. Private, loopback, link-local and metadata addresses are refused after DNS resolution (and again at connect time), as are ports other than 80 and 443 and URLs with credentials. `--allow-private` (CLI and `crawlerpeek mcp`) or `allowPrivate: true` lifts these limits for local testing.
+One request per bot plus one for robots.txt, sequential with a 300 ms pause (`--delay`); 10 s timeout for the whole request chain; at most 5 redirects, each re-checked (a redirect to a refused target is reported for that bot or for robots.txt, it does not stop the run); response bodies capped at 2 MB; no cookies. Private, loopback, link-local and metadata addresses are refused after DNS resolution (and again at connect time), as are ports other than 80 and 443 and URLs with credentials. `--allow-private` (CLI and `crawlerpeek mcp`) or `allowPrivate: true` lifts these limits for local testing.
 
 ## Contributing
 
