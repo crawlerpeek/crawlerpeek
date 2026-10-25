@@ -1,6 +1,6 @@
 {
   "name": "crawlerpeek",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "Check whether AI crawlers (GPTBot, ClaudeBot, PerplexityBot, Google-Extended and more) can access your site: robots.txt per bot, live HTTP status as each bot, robots.txt generator, CLI for CI and an MCP server.",
   "keywords": [
     "robots.txt",
@@ -61,7 +61,8 @@
   "scripts": {
     "build": "node build.mjs",
     "test": "vitest run",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "npm run build && npm test",
+    "build:mcpb": "node scripts/build-mcpb.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
