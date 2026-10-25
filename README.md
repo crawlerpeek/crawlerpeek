@@ -70,13 +70,55 @@ generateRobotsTxt({ disallow: ["/admin/"], blockBots: ["CCBot"], sitemap: "https
 
 ## MCP server
 
-`crawlerpeek mcp` speaks the Model Context Protocol over stdio and exposes three read-only tools: `check_ai_access`, `see_as_bot`, `generate_robots_txt`.
+`crawlerpeek mcp` speaks the Model Context Protocol over stdio and exposes three read-only tools: `check_ai_access`, `see_as_bot`, `generate_robots_txt`. Results are cached for 10 minutes per call. No LLM is called; the tools only fetch the URL you give them.
+
+<a href="https://cursor.com/install-mcp?name=crawlerpeek&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsImNyYXdsZXJwZWVrIiwibWNwIl19"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cursor.com/deeplink/mcp-install-dark.svg"><img src="https://cursor.com/deeplink/mcp-install-light.svg" alt="Add crawlerpeek to Cursor" height="32"></picture></a>
+&nbsp;
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=crawlerpeek&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22crawlerpeek%22%2C%22mcp%22%5D%7D)
+[![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=crawlerpeek&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22crawlerpeek%22%2C%22mcp%22%5D%7D&quality=insiders)
+
+| Client | Install |
+| --- | --- |
+| Claude Code | `claude mcp add --transport stdio crawlerpeek -- npx -y crawlerpeek mcp` |
+| Claude Code (plugin: MCP server and skill) | `/plugin marketplace add crawlerpeek/crawlerpeek`, then `/plugin install crawlerpeek@crawlerpeek` |
+| Claude Desktop | Download `crawlerpeek-<version>.mcpb` from [Releases](https://github.com/crawlerpeek/crawlerpeek/releases) and open it, or add the JSON below |
+| Codex | `codex mcp add crawlerpeek -- npx -y crawlerpeek mcp` |
+| VS Code | `code --add-mcp '{"name":"crawlerpeek","type":"stdio","command":"npx","args":["-y","crawlerpeek","mcp"]}'` |
+| Any other client | the JSON below |
+
+Generic configuration (Claude Desktop, Cursor, Windsurf, Cline and others use this `mcpServers` shape):
 
 ```json
 { "mcpServers": { "crawlerpeek": { "command": "npx", "args": ["-y", "crawlerpeek", "mcp"] } } }
 ```
 
-Results are cached for 10 minutes per call. No LLM is called; the tools only fetch the URL you give them.
+VS Code reads `.vscode/mcp.json` with `servers` as the root key and `"type": "stdio"` on the entry. Codex reads `~/.codex/config.toml`; raise the startup timeout so the first `npx` download does not run into the default 10 seconds:
+
+```toml
+[mcp_servers.crawlerpeek]
+command = "npx"
+args = ["-y", "crawlerpeek", "mcp"]
+startup_timeout_sec = 30
+```
+
+## Agent skill
+
+`skills/crawlerpeek/` is an [Agent Skill](https://agentskills.io/specification): a `SKILL.md` that tells an AI agent when to check AI crawler access, which commands to run, and how to read the result. It uses only the common frontmatter fields, so the same folder works in several agents.
+
+| Agent | Install |
+| --- | --- |
+| Claude Code | installed with the plugin above, or copy the folder to `~/.claude/skills/crawlerpeek` |
+| claude.ai | zip the `crawlerpeek` folder and upload it under Customize > Skills (needs code execution and network access, see the skill's notes) |
+| Codex | copy the folder to `~/.agents/skills/` (all projects) or `.agents/skills/` in a repository |
+| OpenClaw | copy the folder to `~/.agents/skills/` or to `skills/` in your workspace |
+| Hermes | `hermes skills install crawlerpeek/crawlerpeek/skills/crawlerpeek` |
+
+```sh
+git clone --depth 1 https://github.com/crawlerpeek/crawlerpeek.git
+mkdir -p ~/.agents/skills && cp -r crawlerpeek/skills/crawlerpeek ~/.agents/skills/
+```
+
+Restart the agent afterwards so it picks up the new skill. The skill and the MCP server are independent: with the MCP server connected the skill uses its tools, otherwise it runs `npx -y crawlerpeek`.
 
 ## GitHub Action
 

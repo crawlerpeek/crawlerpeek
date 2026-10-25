@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 - 2026-10-25
+
+- Added: an agent skill in `skills/crawlerpeek/` that teaches AI agents when to check AI crawler access, which commands to run and how to read the result. One folder for Claude Code, Claude, Codex, OpenClaw and Hermes.
+- Added: a Claude Code plugin and marketplace. `/plugin marketplace add crawlerpeek/crawlerpeek`, then `/plugin install crawlerpeek@crawlerpeek` installs the MCP server and the skill together.
+- Added: a Claude Desktop extension (`crawlerpeek-<version>.mcpb`, attached to each release) that needs no separate Node.js install. `npm run build:mcpb` builds it.
+- Added: one-click install links for Cursor and VS Code, and install commands for Claude Code and Codex, in the README.
+
 ## 0.1.3 - 2026-10-25
 
 - Fixed: robots.txt length limits count each percent-encoded octet as one character, so a long rule with non-ASCII characters (for example `Disallow: /` followed by 60 CJK characters) is no longer ignored after normalization.
@@ -34,6 +41,7 @@ First release.
 - MCP server over stdio (`crawlerpeek mcp`) with three read-only tools.
 - Composite GitHub Action in `action/`.
 
+[0.2.0]: https://github.com/crawlerpeek/crawlerpeek/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/crawlerpeek/crawlerpeek/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/crawlerpeek/crawlerpeek/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/crawlerpeek/crawlerpeek/compare/v0.1.0...v0.1.1

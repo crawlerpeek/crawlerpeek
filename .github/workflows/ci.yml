@@ -26,3 +26,24 @@ jobs:
       - run: npm test
       - run: node dist/cli.js --help
       - run: npm pack --dry-run
+
+  distribution:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Validate plugin, marketplace and MCP bundle manifests
+        run: npm test -- test/manifests.test.ts
+      - name: Build the MCP bundle
+        run: npm run build:mcpb
+      - name: Inspect the MCP bundle
+        run: unzip -l dist/crawlerpeek-*.mcpb
+      - name: Skill commands run
+        run: |
+          node dist/cli.js robots --disallow /admin/ > /dev/null
+          node dist/cli.js check https://example.com --no-http --json > /dev/null
