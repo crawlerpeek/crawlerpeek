@@ -9,7 +9,7 @@ import { VERSION } from "./version.js";
  * Minimal MCP server over stdio (newline-delimited JSON-RPC 2.0), exactly three read-only tools. No dependencies.
  * Safety: SSRF guard on every request (unless allowPrivate), 10 s timeout, 2 MB body cap, sequential requests, 10 minute cache per call.
  */
-const SUPPORTED = ["2025-06-18", "2025-03-26", "2024-11-05"];
+const SUPPORTED = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 export const CACHE_TTL_MS = 10 * 60 * 1000;
 
 type Json = Record<string, unknown>;
@@ -105,9 +105,10 @@ export function createMcpServer(o: McpOptions = {}) {
 
   /** Handles one JSON-RPC message; returns the response, or null for notifications. */
   async function handle(msg: Rpc): Promise<Json | null> {
+    if (!msg || typeof msg !== "object" || Array.isArray(msg)) return { jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid request" } };
     const id = msg.id ?? null;
     const err = (code: number, message: string) => ({ jsonrpc: "2.0", id, error: { code, message } });
-    if (!msg || typeof msg.method !== "string") return err(-32600, "Invalid request");
+    if (typeof msg.method !== "string") return err(-32600, "Invalid request");
     if (msg.id === undefined) return null; // notification (initialized, cancelled, ...)
     switch (msg.method) {
       case "initialize": {

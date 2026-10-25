@@ -52,6 +52,15 @@ describe("MCP server", () => {
     await call();
     expect(m.calls.length).toBe(2);
   });
+  it("answers a 2025-11-25 client with that version and falls back for unknown ones", async () => {
+    const s = createMcpServer();
+    expect(await s.handle(rpc(1, "initialize", { protocolVersion: "2025-11-25" }))).toMatchObject({ result: { protocolVersion: "2025-11-25" } });
+    expect(await s.handle(rpc(2, "initialize", { protocolVersion: "2031-01-01" }))).toMatchObject({ result: { protocolVersion: "2025-11-25" } });
+  });
+  it("answers non-object messages with -32600", async () => {
+    const s = createMcpServer();
+    for (const bad of [null, 5, "x", []]) expect(await s.handle(bad as never)).toMatchObject({ id: null, error: { code: -32600 } });
+  });
   it("rejects unknown tools and methods", async () => {
     const s = createMcpServer();
     expect(await s.handle(rpc(1, "tools/call", { name: "delete_everything" }))).toMatchObject({ error: { code: -32602 } });
