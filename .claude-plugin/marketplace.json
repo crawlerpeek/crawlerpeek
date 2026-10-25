@@ -1,0 +1,16 @@
+{
+  "name": "crawlerpeek",
+  "owner": { "name": "Crawlerpeek", "url": "https://crawlerpeek.com" },
+  "metadata": { "description": "Crawlerpeek: check whether AI crawlers can access a website." },
+  "plugins": [
+    {
+      "name": "crawlerpeek",
+      "source": "./",
+      "description": "Check which AI crawlers can reach a website: an MCP server (npx -y crawlerpeek mcp) and a skill.",
+      "version": "0.2.0",
+      "homepage": "https://crawlerpeek.com/cli",
+      "license": "MIT",
+      "keywords": ["robots.txt", "ai-crawlers", "geo", "mcp"]
+    }
+  ]
+}

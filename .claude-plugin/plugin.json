@@ -1,0 +1,13 @@
+{
+  "name": "crawlerpeek",
+  "version": "0.2.0",
+  "description": "Check which AI crawlers (GPTBot, ClaudeBot, PerplexityBot and more) can reach a website: an MCP server and a skill.",
+  "author": { "name": "Crawlerpeek", "url": "https://crawlerpeek.com" },
+  "homepage": "https://crawlerpeek.com/cli",
+  "repository": "https://github.com/crawlerpeek/crawlerpeek",
+  "license": "MIT",
+  "keywords": ["robots.txt", "ai-crawlers", "gptbot", "claudebot", "geo", "mcp"],
+  "mcpServers": {
+    "crawlerpeek": { "command": "npx", "args": ["-y", "crawlerpeek", "mcp"] }
+  }
+}
