@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { botRobots, evaluateToken, isAllowed, matchLen, parseRobots, rulesFor } from "../src/robots.js";
+import { botRobots, evaluateToken, isAllowed, matchLen, normalizePath, parseRobots, rulesFor } from "../src/robots.js";
 import { generateRobotsTxt } from "../src/robotsgen.js";
 import { parseRobots as parse2 } from "../src/index.js";
 
@@ -78,5 +78,30 @@ describe("generateRobotsTxt", () => {
     expect(() => generateRobotsTxt({ disallow: ["/a\nUser-agent: x"] })).toThrow();
     expect(() => generateRobotsTxt({ blockBots: ["NoSuchBot"] })).toThrow(/Unknown bot/);
     expect(() => generateRobotsTxt({ sitemap: "javascript:alert(1)" })).toThrow();
+  });
+});
+
+describe("percent-encoding normalization (RFC 9309 section 2.2.2)", () => {
+  it("normalizes non-ASCII, hex case and unreserved characters", () => {
+    expect(normalizePath("/ü")).toBe("/%C3%BC");
+    expect(normalizePath("/%c3%bc")).toBe("/%C3%BC");
+    expect(normalizePath("/%7Efoo/%41%2f")).toBe("/~foo/A%2F");
+    expect(normalizePath("/😀*$")).toBe("/%F0%9F%98%80*$");
+    expect(normalizePath("/100%/%zz")).toBe("/100%/%zz");
+    expect(normalizePath("/\ud800x")).toBe("/%EF%BF%BDx");
+  });
+  it("matches a non-ASCII rule against the encoded request path", () => {
+    const path = new URL("https://x.test/ü/seite").pathname;
+    expect(decide("User-agent: *\nDisallow: /ü\n", "GPTBot", path).pathAllowed).toBe(false);
+    expect(decide("User-agent: *\nDisallow: /%c3%bc\n", "GPTBot", "/ü/seite").pathAllowed).toBe(false);
+  });
+  it("treats %7E and ~ as the same character in either direction", () => {
+    expect(decide("User-agent: *\nDisallow: /%7Efoo\n", "GPTBot", "/~foo").pathAllowed).toBe(false);
+    expect(decide("User-agent: *\nDisallow: /~foo\n", "GPTBot", "/%7Efoo").pathAllowed).toBe(false);
+    expect(decide("User-agent: *\nDisallow: /%7Efoo\n", "GPTBot", "/foo").pathAllowed).toBe(true);
+  });
+  it("keeps reserved escapes distinct", () => {
+    expect(decide("User-agent: *\nDisallow: /a%2Fb\n", "GPTBot", "/a/b").pathAllowed).toBe(true);
+    expect(decide("User-agent: *\nDisallow: /a%2Fb\n", "GPTBot", "/a%2fb").pathAllowed).toBe(false);
   });
 });

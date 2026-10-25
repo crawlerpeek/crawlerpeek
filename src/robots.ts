@@ -11,6 +11,31 @@ export type Access = "allowed" | "partial" | "blocked";
 export const LIMITS = { path: 256, pattern: 200, rulesPerGroup: 1000, steps: 2_000_000 } as const;
 const newBudget = (): Budget => ({ steps: LIMITS.steps, exceeded: false });
 
+const UNRESERVED = /[A-Za-z0-9\-._~]/;
+const HEX = /^[0-9A-Fa-f]{2}$/;
+
+/**
+ * RFC 9309 section 2.2.2: octets outside US-ASCII are percent-encoded as UTF-8, percent-encoded octets get upper-case hex, and
+ * unreserved characters are decoded, so `/ü`, `/%C3%BC` and `/%c3%bc` compare equal, as do `/~a` and `/%7Ea`. Applied to rules and request paths.
+ */
+export function normalizePath(p: string): string {
+  let out = "";
+  for (let i = 0; i < p.length; i++) {
+    const c = p[i];
+    if (c === "%" && HEX.test(p.slice(i + 1, i + 3))) {
+      const ch = String.fromCharCode(parseInt(p.slice(i + 1, i + 3), 16));
+      out += UNRESERVED.test(ch) ? ch : "%" + p.slice(i + 1, i + 3).toUpperCase();
+      i += 2;
+    } else if (c.charCodeAt(0) < 0x80) out += c;
+    else {
+      const cp = p.codePointAt(i) as number;
+      if (cp > 0xffff) i++;
+      out += cp >= 0xd800 && cp <= 0xdfff ? "%EF%BF%BD" : encodeURIComponent(String.fromCodePoint(cp));
+    }
+  }
+  return out;
+}
+
 export function parseRobots(text: string): Parsed {
   const groups: Parsed["groups"] = [];
   const sitemaps: string[] = [];
@@ -37,7 +62,7 @@ export function parseRobots(text: string): Parsed {
     if (field === "allow" || field === "disallow") lastWasAgent = false;
     if (field === "sitemap") sitemaps.push(value);
     else if ((field === "allow" || field === "disallow") && cur && ++ruleCount <= 5000 && cur.rules.length < LIMITS.rulesPerGroup) {
-      cur.rules.push({ allow: field === "allow", path: value });
+      cur.rules.push({ allow: field === "allow", path: normalizePath(value) });
     }
   }
   return { groups, sitemaps, budget: newBudget() };
@@ -120,6 +145,7 @@ export function botRobots(state: RobotsState, parsed: Parsed | null, token: stri
   if (state === "missing") return { access: "allowed", pathAllowed: true, matchedGroup: "", disallowed: [] };
   if (state === "unavailable" || !parsed) return { access: "unknown", pathAllowed: null, matchedGroup: "", disallowed: [] };
   const b = parsed.budget;
+  path = normalizePath(path);
   const ev = evaluateToken(parsed, token);
   const { rules } = rulesFor(parsed, token);
   const open = isAllowed(rules, path, b);
