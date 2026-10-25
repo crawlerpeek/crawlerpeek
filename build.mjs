@@ -1,4 +1,4 @@
-// Builds dist/esm (ES modules), dist/cjs (CommonJS), dist/types and the dist/cli.js launcher with the TypeScript compiler; no other build tool needed.
+// Builds dist/esm (ES modules) and dist/cjs (CommonJS), each with its own declarations, and the dist/cli.js launcher with the TypeScript compiler; no other build tool needed.
 import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 

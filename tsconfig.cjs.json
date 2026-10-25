@@ -8,6 +8,7 @@
     "types": ["node"],
     "module": "node16",
     "moduleResolution": "node16",
+    "declaration": true,
     "outDir": "dist/cjs"
   },
   "include": ["src"]
