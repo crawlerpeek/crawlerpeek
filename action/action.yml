@@ -41,11 +41,11 @@ runs:
         set +e
         args=(check "$CP_URL" --fail-on "$CP_FAIL_ON" --json)
         if [ -n "$CP_BOTS" ]; then args+=(--bots "$CP_BOTS"); fi
-        npx --yes "crawlerpeek@${CP_VERSION}" "${args[@]}" > crawlerpeek-report.json
+        npx --yes "crawlerpeek@${CP_VERSION}" "${args[@]}" > "$RUNNER_TEMP/crawlerpeek-report.json"
         code=$?
         {
           echo "report<<CP_EOF"
-          cat crawlerpeek-report.json
+          cat "$RUNNER_TEMP/crawlerpeek-report.json"
           echo "CP_EOF"
         } >> "$GITHUB_OUTPUT"
         exit $code
