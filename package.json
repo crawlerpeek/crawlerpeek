@@ -1,0 +1,67 @@
+{
+  "name": "crawlerpeek",
+  "version": "0.1.0",
+  "description": "Check whether AI crawlers (GPTBot, ClaudeBot, PerplexityBot, Google-Extended and more) can access your site: robots.txt per bot, live HTTP status as each bot, robots.txt generator, CLI for CI and an MCP server.",
+  "keywords": [
+    "robots.txt",
+    "ai",
+    "crawler",
+    "gptbot",
+    "claudebot",
+    "perplexitybot",
+    "geo",
+    "seo",
+    "mcp",
+    "model-context-protocol",
+    "ci"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "Crawlerpeek",
+    "url": "https://crawlerpeek.com"
+  },
+  "homepage": "https://crawlerpeek.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/crawlerpeek/crawlerpeek.git"
+  },
+  "bugs": {
+    "url": "https://github.com/crawlerpeek/crawlerpeek/issues"
+  },
+  "sideEffects": false,
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/types/index.d.ts",
+  "bin": {
+    "crawlerpeek": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "server.json",
+    "action"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^7.0.2",
+    "vitest": "5.0.5"
+  },
+  "mcpName": "io.github.crawlerpeek/crawlerpeek"
+}

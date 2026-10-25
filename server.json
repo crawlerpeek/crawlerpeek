@@ -1,0 +1,19 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.crawlerpeek/crawlerpeek",
+  "title": "Crawlerpeek",
+  "description": "Check whether AI crawlers (GPTBot, ClaudeBot, PerplexityBot and more) can access a URL: robots.txt per bot, live HTTP status as each bot, robots.txt generator. Read-only.",
+  "version": "0.1.0",
+  "repository": { "url": "https://github.com/crawlerpeek/crawlerpeek", "source": "github" },
+  "websiteUrl": "https://crawlerpeek.com",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "crawlerpeek",
+      "version": "0.1.0",
+      "runtimeHint": "npx",
+      "transport": { "type": "stdio" },
+      "packageArguments": [{ "type": "positional", "value": "mcp" }]
+    }
+  ]
+}

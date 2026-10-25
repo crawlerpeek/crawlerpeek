@@ -1,0 +1,106 @@
+import { checkAiAccess, failingBots, seeAsBot, type CheckReport, type FailOn } from "./check.js";
+import { generateRobotsTxt } from "./robotsgen.js";
+import { serveStdio } from "./mcp.js";
+import { VERSION } from "./version.js";
+
+const HELP = `crawlerpeek ${VERSION}: can AI crawlers access your site?
+
+Usage
+  crawlerpeek check <url> [--bots a,b|all] [--fail-on blocked|any-non-200] [--json] [--no-http] [--allow-private]
+  crawlerpeek see <url> --bot <token> [--json] [--allow-private]
+  crawlerpeek robots [--disallow /admin/,/tmp/] [--block-bots CCBot] [--sitemap <url>]
+  crawlerpeek mcp [--allow-private]          MCP server on stdio (3 read-only tools)
+
+check   robots.txt decision per bot plus the HTTP status when the page is fetched with each bot's user-agent string.
+        Exit code 0 = ok, 1 = --fail-on condition met, 2 = usage or request error.
+        --fail-on blocked      fail when robots.txt closes the path or the page answers with a block/challenge
+        --fail-on any-non-200  also fail on any other status or failed request
+see     Fetch one URL with one bot's user agent (status, redirects, type, size, title, block-page heuristic).
+Note    The user-agent strings are the bots' own and are sent from this machine, not from the operators' IP ranges.
+        A site that verifies bot IPs may answer differently to the real bot. Private/loopback targets are refused unless --allow-private.
+`;
+
+type Io = { out: (s: string) => void; err: (s: string) => void };
+const defaultIo: Io = { out: (s) => process.stdout.write(s + "\n"), err: (s) => process.stderr.write(s + "\n") };
+
+function parseArgs(argv: string[], valueFlags: string[]) {
+  const flags: Record<string, string | true> = {};
+  const pos: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a.startsWith("--")) {
+      const [k, v] = a.slice(2).split(/=(.*)/s, 2);
+      if (valueFlags.includes(k)) {
+        const val = v ?? argv[++i];
+        if (val === undefined) throw new Error(`--${k} needs a value.`);
+        flags[k] = val;
+      } else flags[k] = true;
+    } else pos.push(a);
+  }
+  return { flags, pos };
+}
+const list = (v: string | true | undefined) => (typeof v === "string" ? v.split(",").map((s) => s.trim()).filter(Boolean) : undefined);
+
+const pad = (s: string, n: number) => s + " ".repeat(Math.max(0, n - s.length));
+export function formatTable(r: CheckReport, failed: string[]): string {
+  const rows = r.bots.map((b) => {
+    const rb = b.robots.access === "unknown" ? "unknown" : b.robots.pathAllowed === false ? "blocked" : b.robots.access === "partial" ? "allowed*" : "allowed";
+    const h = b.http;
+    const http = !h ? "-" : !h.fetched ? "error" : `${h.status}${h.looksBlocked ? " (block page)" : ""}`;
+    return [b.bot, rb, http, failed.includes(b.bot) ? "FAIL" : ""];
+  });
+  const w = [Math.max(3, ...rows.map((x) => x[0].length)), 8, Math.max(4, ...rows.map((x) => x[2].length))];
+  const lines = [`${r.url}`, `robots.txt: ${r.robotsTxt.state}${r.robotsTxt.status ? ` (HTTP ${r.robotsTxt.status})` : ""} at ${r.robotsTxt.url}`, ""];
+  lines.push(`${pad("Bot", w[0])}  ${pad("robots", w[1])}  ${pad("HTTP", w[2])}`);
+  for (const x of rows) lines.push(`${pad(x[0], w[0])}  ${pad(x[1], w[1])}  ${pad(x[2], w[2])}  ${x[3]}`.trimEnd());
+  if (rows.some((x) => x[1] === "allowed*")) lines.push("", "* allowed for this path; robots.txt closes other parts of the site.");
+  return lines.join("\n");
+}
+
+export async function main(argv: string[], io: Io = defaultIo): Promise<number> {
+  const [cmd, ...rest] = argv;
+  try {
+    if (!cmd || cmd === "help" || cmd === "--help" || cmd === "-h") { io.out(HELP); return cmd ? 0 : 2; }
+    if (cmd === "--version" || cmd === "-v" || cmd === "version") { io.out(VERSION); return 0; }
+    if (cmd === "mcp") {
+      const { flags } = parseArgs(rest, []);
+      await serveStdio(process.stdin, process.stdout, { allowPrivate: flags["allow-private"] === true });
+      return 0;
+    }
+    if (cmd === "robots") {
+      const { flags } = parseArgs(rest, ["disallow", "block-bots", "sitemap"]);
+      io.out(generateRobotsTxt({ disallow: list(flags.disallow), blockBots: list(flags["block-bots"]), sitemap: typeof flags.sitemap === "string" ? flags.sitemap : undefined }).trimEnd());
+      return 0;
+    }
+    if (cmd === "see") {
+      const { flags, pos } = parseArgs(rest, ["bot"]);
+      if (!pos[0] || typeof flags.bot !== "string") { io.err("Usage: crawlerpeek see <url> --bot <token>"); return 2; }
+      const r = await seeAsBot(pos[0], flags.bot, { allowPrivate: flags["allow-private"] === true });
+      io.out(flags.json ? JSON.stringify(r, null, 2) : Object.entries(r).map(([k, v]) => `${pad(k, 12)} ${v === null || v === "" ? "-" : v}`).join("\n"));
+      return r.fetched ? 0 : 1;
+    }
+    if (cmd === "check") {
+      const { flags, pos } = parseArgs(rest, ["bots", "fail-on", "delay"]);
+      if (!pos[0]) { io.err("Usage: crawlerpeek check <url> [--bots a,b] [--fail-on blocked|any-non-200] [--json]"); return 2; }
+      const failOn = (flags["fail-on"] ?? "none") as string;
+      if (!["none", "blocked", "any-non-200"].includes(failOn)) { io.err(`--fail-on must be blocked or any-non-200 (got "${failOn}").`); return 2; }
+      if (flags.delay !== undefined && !(typeof flags.delay === "string" && /^\d+$/.test(flags.delay))) { io.err("--delay must be a whole number of milliseconds."); return 2; }
+      const bots = list(flags.bots);
+      const report = await checkAiAccess(pos[0], {
+        bots: bots?.length === 1 && bots[0].toLowerCase() === "all" ? "all" : bots,
+        http: flags["no-http"] !== true,
+        allowPrivate: flags["allow-private"] === true,
+        delayMs: typeof flags.delay === "string" ? Number(flags.delay) : undefined,
+      });
+      const failed = failingBots(report, failOn as FailOn);
+      io.out(flags.json ? JSON.stringify({ ...report, failOn, failed }, null, 2) : formatTable(report, failed));
+      if (failed.length) { io.err(`${failed.length} bot(s) failed --fail-on ${failOn}: ${failed.join(", ")}`); return 1; }
+      return 0;
+    }
+    io.err(`Unknown command "${cmd}".\n\n${HELP}`);
+    return 2;
+  } catch (e) {
+    io.err(`crawlerpeek: ${e instanceof Error ? e.message : String(e)}`);
+    return 2;
+  }
+}

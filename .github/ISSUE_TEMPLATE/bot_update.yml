@@ -1,0 +1,22 @@
+name: Bot list update
+description: A crawler is missing, renamed, or its user agent or documentation changed.
+labels: [bots]
+body:
+  - type: input
+    id: token
+    attributes:
+      label: robots.txt token
+      placeholder: GPTBot
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Operator documentation
+      description: A link to the operator's own page. Entries are only added or changed on the basis of official documentation.
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: What should change

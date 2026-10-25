@@ -1,0 +1,26 @@
+name: Bug report
+description: A check returned a wrong result, or the CLI, library or MCP server failed.
+labels: [bug]
+body:
+  - type: input
+    id: command
+    attributes:
+      label: Command or call
+      description: What you ran. Replace private URLs with a public example if you can.
+      placeholder: npx crawlerpeek check https://example.com --bots GPTBot
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: What happened, and what you expected
+      description: Paste the output (`--json` helps). For robots.txt questions, include the relevant robots.txt lines.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: crawlerpeek and Node.js version
+      placeholder: crawlerpeek 0.1.0, Node 24.1.0
+    validations:
+      required: true

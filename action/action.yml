@@ -1,0 +1,51 @@
+name: Crawlerpeek AI crawler check
+description: Fail the build when AI crawlers (GPTBot, ClaudeBot, PerplexityBot and more) are blocked from a URL by robots.txt or a bot challenge.
+author: Crawlerpeek
+branding:
+  icon: shield
+  color: blue
+inputs:
+  url:
+    description: Public URL to check.
+    required: true
+  bots:
+    description: Comma-separated bot tokens, or "all". Default is the 15 main AI and search bots.
+    required: false
+    default: ""
+  fail-on:
+    description: "blocked, any-non-200 or none."
+    required: false
+    default: blocked
+  version:
+    description: Version of the crawlerpeek npm package to run.
+    required: false
+    default: latest
+outputs:
+  report:
+    description: The check result as JSON.
+    value: ${{ steps.check.outputs.report }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7
+      with:
+        node-version: "24"
+    - id: check
+      shell: bash
+      env:
+        CP_URL: ${{ inputs.url }}
+        CP_BOTS: ${{ inputs.bots }}
+        CP_FAIL_ON: ${{ inputs.fail-on }}
+        CP_VERSION: ${{ inputs.version }}
+      run: |
+        set +e
+        args=(check "$CP_URL" --fail-on "$CP_FAIL_ON" --json)
+        if [ -n "$CP_BOTS" ]; then args+=(--bots "$CP_BOTS"); fi
+        npx --yes "crawlerpeek@${CP_VERSION}" "${args[@]}" > crawlerpeek-report.json
+        code=$?
+        {
+          echo "report<<CP_EOF"
+          cat crawlerpeek-report.json
+          echo "CP_EOF"
+        } >> "$GITHUB_OUTPUT"
+        exit $code
