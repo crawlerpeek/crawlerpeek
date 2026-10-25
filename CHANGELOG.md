@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3 - 2026-10-25
+
+- Fixed: robots.txt length limits count each percent-encoded octet as one character, so a long rule with non-ASCII characters (for example `Disallow: /` followed by 60 CJK characters) is no longer ignored after normalization.
+
 ## 0.1.2 - 2026-10-25
 
 - Fixed: a crafted page could make the title extraction run for tens of seconds. It is now linear-time.
@@ -30,6 +34,7 @@ First release.
 - MCP server over stdio (`crawlerpeek mcp`) with three read-only tools.
 - Composite GitHub Action in `action/`.
 
+[0.1.3]: https://github.com/crawlerpeek/crawlerpeek/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/crawlerpeek/crawlerpeek/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/crawlerpeek/crawlerpeek/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/crawlerpeek/crawlerpeek/releases/tag/v0.1.0
