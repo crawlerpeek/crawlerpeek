@@ -50,6 +50,8 @@
   },
   "files": [
     "dist",
+    "!dist/*.mcpb",
+    "!dist/mcpb-stage",
     "README.md",
     "LICENSE",
     "server.json",

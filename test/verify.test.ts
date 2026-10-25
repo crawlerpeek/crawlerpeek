@@ -87,6 +87,15 @@ describe("verifyBotIp", () => {
     const [c] = await verifyBotIp("6.6.6.6", { bot: "Bingbot", fetch: down.fetch, resolve: publicResolve, resolver: other });
     expect(c.verified).toBeNull(); // list unreachable and rDNS negative: undecided
   });
+  it("does not accept a Google Cloud VM as Googlebot", async () => {
+    const lists = Object.fromEntries(["common-crawlers", "special-crawlers", "user-triggered-agents", "user-triggered-fetchers", "user-triggered-fetchers-google"].map((n) => [`https://developers.google.com/static/crawling/ipranges/${n}.json`, list("66.249.64.0/19")]));
+    const vm = dnsStub({ "35.190.0.1": ["1.0.190.35.bc.googleusercontent.com."] }, { "1.0.190.35.bc.googleusercontent.com": ["35.190.0.1"] });
+    const [r] = await verifyBotIp("35.190.0.1", { bot: "Googlebot", fetch: mockFetch(lists).fetch, resolve: publicResolve, resolver: vm });
+    expect(r.verified).toBe(false);
+    const fetcher = dnsStub({ "35.190.0.2": ["fetcher.gae.googleusercontent.com."] }, { "fetcher.gae.googleusercontent.com": ["35.190.0.2"] });
+    const [g] = await verifyBotIp("35.190.0.2", { bot: "Googlebot", fetch: mockFetch(lists).fetch, resolve: publicResolve, resolver: fetcher });
+    expect(g.verified).toBe(true);
+  });
   it("a matching list wins even if another list fails", async () => {
     const ok = Object.fromEntries(["special-crawlers", "user-triggered-agents", "user-triggered-fetchers", "user-triggered-fetchers-google"].map((n) => [`https://developers.google.com/static/crawling/ipranges/${n}.json`, { status: 500 }]));
     const m = mockFetch({ ...ok, "https://developers.google.com/static/crawling/ipranges/common-crawlers.json": list("66.249.64.0/19") });

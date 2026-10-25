@@ -64,7 +64,7 @@ Interpret it:
 - `unknown`: the robots.txt fetch failed. Treat it as a problem to fix. Many crawlers treat an unreachable robots.txt (5xx) as "disallow everything".
 - A 200 with a short or empty page title can mean the content is rendered by JavaScript. Crawlerpeek does not run JavaScript, and many AI crawlers do not either.
 - `control` bots (Google-Extended, Applebot-Extended) only get a robots.txt decision.
-- `verify`: `verified: true` means the IP is in the operator's published list or passes forward-confirmed reverse DNS; `false` means every documented method says no, so the request only claimed the name; `null` means it could not be decided (no documented method, or a list could not be fetched). Never call an IP fake on `null`.
+- `verify`: `verified: true` means the IP is in the operator's published list or passes forward-confirmed reverse DNS; `false` means every documented method says no, so the request only claimed the name; `null` means it could not be decided (no documented method, or a list could not be fetched). Never call an IP fake on `null`. Exit code 1 from `verify` is a normal result (not verified or undecided), not a tool error.
 
 Limits to state when they matter:
 
