@@ -104,4 +104,11 @@ describe("percent-encoding normalization (RFC 9309 section 2.2.2)", () => {
     expect(decide("User-agent: *\nDisallow: /a%2Fb\n", "GPTBot", "/a/b").pathAllowed).toBe(true);
     expect(decide("User-agent: *\nDisallow: /a%2Fb\n", "GPTBot", "/a%2fb").pathAllowed).toBe(false);
   });
+
+  it("honors long non-ASCII rules by their written length", () => {
+    const rule = "/" + "日".repeat(60);
+    const p = parseRobots(`User-agent: *\nDisallow: ${rule}\n`);
+    expect(isAllowed(p.groups[0].rules, normalizePath(rule + "/x"))).toBe(false);
+    expect(matchLen(normalizePath("/" + "ü".repeat(101)), normalizePath("/" + "ü".repeat(101)))).toBe(-1);
+  });
 });

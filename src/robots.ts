@@ -68,15 +68,28 @@ export function parseRobots(text: string): Parsed {
   return { groups, sitemaps, budget: newBudget() };
 }
 
+/** Length with every percent-encoded octet (`%XX`) counted as one unit, so limits apply to what was written and a long non-ASCII rule is not ignored after normalization. */
+const units = (s: string) => s.length - 2 * (s.match(/%[0-9A-F]{2}/g)?.length ?? 0);
+/** Index at which `s` exceeds `max` units (s.length when it does not). */
+function cutIndex(s: string, max: number): number {
+  let u = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (++u > max) return i;
+    if (s[i] === "%" && HEX.test(s.slice(i + 1, i + 3))) i += 2;
+  }
+  return s.length;
+}
+
 /** Pattern length when the rule matches the path (counting `*` and `$`), else -1. Linear wildcard matcher. */
 export function matchLen(pattern: string, path: string, budget?: Budget): number {
-  if (!pattern || pattern.length > LIMITS.pattern) return -1;
+  if (!pattern || units(pattern) > LIMITS.pattern) return -1;
   if (budget?.exceeded) return -1;
   const anchored = pattern.endsWith("$");
   const pat = anchored ? pattern.slice(0, -1) : pattern;
-  const cut = path.length > LIMITS.path;
+  const cutAt = cutIndex(path, LIMITS.path);
+  const cut = cutAt < path.length;
   if (cut && anchored) return -1;
-  const s = cut ? path.slice(0, LIMITS.path) : path;
+  const s = cut ? path.slice(0, cutAt) : path;
   let pi = 0, si = 0, star = -1, mark = 0;
   while (si < s.length) {
     if (budget && --budget.steps < 0) { budget.exceeded = true; return -1; }
