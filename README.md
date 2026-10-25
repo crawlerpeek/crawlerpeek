@@ -9,7 +9,7 @@ Check whether AI crawlers can access your site. For each bot (GPTBot, OAI-Search
 
 It also generates a `robots.txt` that welcomes AI crawlers. A library, a CLI for CI, and an MCP server. Node 20 or newer, no runtime dependencies, ESM and CommonJS, TypeScript types included.
 
-The same checks as a web tool: [crawlerpeek.com](https://crawlerpeek.com)
+The same checks as a web tool: [crawlerpeek.com](https://crawlerpeek.com). Documentation with examples for CI and MCP clients: [crawlerpeek.com/cli](https://crawlerpeek.com/cli).
 
 ## Install
 
