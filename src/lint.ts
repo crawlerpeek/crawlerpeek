@@ -149,7 +149,8 @@ export async function lintRobotsUrl(url: string, opts: LintUrlOptions = {}): Pro
   const r = await fetchRobots(url, { ...opts, maxBytes: MAX_BYTES + 1024 });
   const base = { url: r.robotsUrl, status: r.status, state: r.state, error: r.error };
   if (r.state === "unavailable") return { ...base, note: "robots.txt could not be fetched, so there is nothing to lint.", findings: [] };
-  if (r.html) return { ...base, note: null, findings: lintRobotsTxt(r.body) };
+  // A 2xx web page at /robots.txt is the mistake worth reporting; an HTML error page with a 4xx status is just a missing file.
+  if (r.html && r.status !== null && r.status < 300) return { ...base, note: null, findings: lintRobotsTxt(r.body) };
   if (r.state === "missing") return { ...base, note: `No robots.txt (HTTP ${r.status}). Crawlers treat a missing file as allow-all.`, findings: [] };
   return { ...base, note: null, findings: lintRobotsTxt(r.body) };
 }

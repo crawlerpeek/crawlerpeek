@@ -123,6 +123,10 @@ describe("lintRobotsUrl", () => {
     const r = await lintRobotsUrl("https://a.com/", { ...base, fetch: mockFetch({ "https://a.com/robots.txt": { body: "<html><body>Home</body></html>" } }).fetch });
     expect(r.findings.map((f) => f.code)).toEqual(["html-instead-of-robots"]);
   });
+  it("treats an HTML error page with a 4xx status as a missing file, not as a broken robots.txt", async () => {
+    const r = await lintRobotsUrl("https://a.com/", { ...base, fetch: mockFetch({ "https://a.com/robots.txt": { status: 404, body: "<!doctype html><title>Not found</title>" } }).fetch });
+    expect(r).toMatchObject({ state: "missing", status: 404, findings: [] });
+  });
   it("reports an unreachable robots.txt without findings and refuses private targets", async () => {
     const r = await lintRobotsUrl("https://a.com/", { ...base, fetch: mockFetch({ "https://a.com/robots.txt": { status: 503, headers: txt } }).fetch });
     expect(r).toMatchObject({ state: "unavailable", error: "HTTP 503", findings: [] });

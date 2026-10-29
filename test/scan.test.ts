@@ -113,4 +113,13 @@ describe("scanSite", () => {
     await expect(scan({}, { bots: ["NopeBot"] })).rejects.toThrow(/Unknown bot/);
     await expect(scanSite("http://127.0.0.1/", { resolve: publicResolve })).rejects.toThrow(/private/);
   });
+  it("follows a robots.txt redirect to www and keeps that host's sitemap URLs", async () => {
+    const { r, calls } = await scan({
+      "https://a.com/robots.txt": { status: 301, headers: { location: "https://www.a.com/robots.txt" } },
+      "https://www.a.com/robots.txt": { body: "User-agent: GPTBot\nDisallow: /x/\n", headers: txt },
+      "https://www.a.com/sitemap.xml": { body: urlset("https://www.a.com/x/1", "https://www.a.com/y", "https://b.com/z"), headers: xml },
+    }, {}, "https://a.com/");
+    expect(calls).toEqual(["https://a.com/robots.txt", "https://www.a.com/robots.txt", "https://www.a.com/sitemap.xml"]);
+    expect(r.urls).toEqual([{ url: "https://www.a.com/x/1", blockedFor: ["GPTBot"] }, { url: "https://www.a.com/y", blockedFor: [] }]);
+  });
 });

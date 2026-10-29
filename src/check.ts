@@ -149,7 +149,7 @@ const isInputError = (e: unknown) => e instanceof NetError && (e.code === "block
 
 const sleep = (ms: number) => (ms > 0 ? new Promise<void>((r) => setTimeout(r, ms)) : Promise.resolve());
 
-export type RobotsFetch = { target: URL; robotsUrl: string; state: RobotsState; parsed: Parsed | null; status: number | null; error: string | null; body: string; html: boolean };
+export type RobotsFetch = { target: URL; robotsUrl: string; state: RobotsState; parsed: Parsed | null; status: number | null; error: string | null; body: string; html: boolean; /** URL that answered after redirects, null when the request failed. */ finalUrl: string | null };
 
 /** Fetches `<origin>/robots.txt` with the honest client UA. `html` is true when the server answered with a web page (state "missing", as crawlers see it). Only the supplied URL may throw. */
 export async function fetchRobots(url: string, opts: Pick<CheckOptions, "allowPrivate" | "resolve" | "fetch" | "timeoutMs"> & { maxBytes?: number } = {}): Promise<RobotsFetch> {
@@ -164,9 +164,11 @@ export async function fetchRobots(url: string, opts: Pick<CheckOptions, "allowPr
   let error: string | null = null;
   let body = "";
   let html = false;
+  let finalUrl: string | null = null;
   try {
     const r = await guardedGet(robotsUrl, net);
     status = r.status;
+    finalUrl = r.finalUrl;
     body = r.body;
     html = /html/i.test(r.contentType) || /^\s*<(!doctype|html)/i.test(r.body);
     if (r.status >= 500 || r.status === 429) { state = "unavailable"; error = `HTTP ${r.status}`; }
@@ -177,7 +179,7 @@ export async function fetchRobots(url: string, opts: Pick<CheckOptions, "allowPr
     if (isInputError(e)) throw e;
     error = e instanceof Error ? clean(e.message, 200) : "request failed";
   }
-  return { target, robotsUrl, state, parsed, status, error, body, html };
+  return { target, robotsUrl, state, parsed, status, error, body, html, finalUrl };
 }
 
 /**

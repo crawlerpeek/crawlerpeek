@@ -55,13 +55,15 @@ export async function scanSite(url: string, opts: ScanOptions = {}): Promise<Sca
   if (!Number.isInteger(limit) || limit < 1 || limit > SCAN_MAX_LIMIT) throw new Error(`limit must be a whole number from 1 to ${SCAN_MAX_LIMIT}.`);
   const bots = selectBots(opts.bots);
   const rf = await fetchRobots(url, opts);
-  const host = rf.target.host;
+  // A robots.txt that redirects to another host (example.com -> www.example.com) is that host's file too, and its sitemap lists that host's URLs.
+  const hosts = new Set([rf.target.host]);
+  if (rf.finalUrl) hosts.add(new URL(rf.finalUrl).host);
   const net: NetOptions = { userAgent: CLIENT_UA, accept: "application/xml,text/xml,text/plain;q=0.8,*/*;q=0.5", allowPrivate: opts.allowPrivate, resolve: opts.resolve, fetch: opts.fetch, timeoutMs: opts.timeoutMs, maxBytes: SITEMAP_MAX_BYTES };
 
   const sitemaps: SitemapInfo[] = [];
   const found = new Set<string>();
   const sameHost = (raw: string): string | null => {
-    try { const u = new URL(raw); return (u.protocol === "http:" || u.protocol === "https:") && u.host === host ? u.href : null; } catch { return null; }
+    try { const u = new URL(raw); return (u.protocol === "http:" || u.protocol === "https:") && hosts.has(u.host) ? u.href : null; } catch { return null; }
   };
   /** One sitemap file; returns its entries (URLs, or child sitemaps for an index). */
   async function load(raw: string): Promise<{ index: boolean; locs: string[]; info: SitemapInfo }> {
@@ -86,7 +88,7 @@ export async function scanSite(url: string, opts: ScanOptions = {}): Promise<Sca
     }
   }
 
-  const tops = rf.parsed?.sitemaps.length ? rf.parsed.sitemaps.slice(0, MAX_TOP) : [`${rf.target.origin}/sitemap.xml`];
+  const tops = rf.parsed?.sitemaps.length ? rf.parsed.sitemaps.slice(0, MAX_TOP) : [`${rf.finalUrl ? new URL(rf.finalUrl).origin : rf.target.origin}/sitemap.xml`];
   let children = 0;
   for (const top of tops) {
     if (found.size >= limit) break;
