@@ -25,7 +25,8 @@
     { "name": "see_as_bot", "description": "Fetch one URL with a single bot's user-agent string and report status, redirects, size, title and block-page signals." },
     { "name": "verify_bot_ip", "description": "Check whether an IP address really belongs to a crawler, using the operator's published IP lists or forward-confirmed reverse DNS." },
     { "name": "generate_robots_txt", "description": "Generate a robots.txt that welcomes AI crawlers, with optional disallowed paths and bots to close." },
-    { "name": "lint_robots_txt", "description": "Lint a robots.txt, fetched from a site or pasted as text, for typos, misplaced rules, relative paths and other mistakes." }
+    { "name": "lint_robots_txt", "description": "Lint a robots.txt, fetched from a site or pasted as text, for typos, misplaced rules, relative paths and other mistakes." },
+    { "name": "scan_site", "description": "Check robots.txt for many pages of one site at once, using the URLs in its sitemap. Reads only robots.txt and the sitemap files." }
   ],
   "compatibility": { "runtimes": { "node": ">=20.0.0" } }
 }

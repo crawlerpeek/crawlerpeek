@@ -2,13 +2,14 @@ import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import { checkAiAccess, seeAsBot, type CheckOptions } from "./check.js";
 import { verifyBotIp } from "./verify.js";
+import { scanSite } from "./scan.js";
 import { lintCounts, lintRobotsTxt, lintRobotsUrl } from "./lint.js";
 import { generateRobotsTxt } from "./robotsgen.js";
 import { BOTS } from "./bots.js";
 import { VERSION } from "./version.js";
 
 /**
- * Minimal MCP server over stdio (newline-delimited JSON-RPC 2.0), exactly five read-only tools. No dependencies.
+ * Minimal MCP server over stdio (newline-delimited JSON-RPC 2.0), exactly six read-only tools. No dependencies.
  * Safety: SSRF guard on every request (unless allowPrivate), 10 s timeout, 2 MB body cap, sequential requests, 10 minute cache per call.
  */
 const SUPPORTED = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
@@ -84,6 +85,19 @@ export const TOOLS = [
     },
     annotations: { title: "Lint robots.txt", ...readOnly },
   },
+  {
+    name: "scan_site",
+    description: "Check robots.txt for many pages of one site at once: takes the URLs from its sitemap (listed in robots.txt, else /sitemap.xml; a sitemap index is followed one level) and reports per bot which URLs robots.txt blocks. Same host only, up to 200 URLs, .gz sitemaps are skipped. Read-only; fetches only robots.txt and the sitemap files, never the pages.",
+    inputSchema: {
+      type: "object", additionalProperties: false, required: ["url"],
+      properties: {
+        url: { type: "string", description: "Public http(s) URL on the site to scan." },
+        limit: { type: "integer", minimum: 1, maximum: 200, description: "How many sitemap URLs to check (default 25)." },
+        bots: { type: "array", items: { type: "string" }, description: `Bot tokens to check, or omit for the default 15. Known: ${botTokens.join(", ")}.` },
+      },
+    },
+    annotations: { title: "Scan a site's sitemap", ...readOnly },
+  },
 ];
 
 const text = (obj: unknown): ToolResult => ({ content: [{ type: "text", text: typeof obj === "string" ? obj : JSON.stringify(obj, null, 2) }], ...(typeof obj === "object" && obj !== null ? { structuredContent: obj as Json } : {}) });
@@ -118,6 +132,10 @@ export function createMcpServer(o: McpOptions = {}) {
         if (typeof args.ip !== "string") throw new Error("ip is required.");
         if (args.bot !== undefined && typeof args.bot !== "string") throw new Error("bot must be a string.");
         result = text({ ip: args.ip, results: await verifyBotIp(args.ip, { bot: args.bot as string | undefined, fetch: net.fetch, resolve: net.resolve }) });
+      } else if (name === "scan_site") {
+        if (typeof args.url !== "string") throw new Error("url is required.");
+        if (args.limit !== undefined && typeof args.limit !== "number") throw new Error("limit must be a number.");
+        result = text(await scanSite(args.url, { ...net, bots: strArr(args.bots, "bots"), limit: args.limit as number | undefined }));
       } else if (name === "lint_robots_txt") {
         const { url, text: body } = args;
         if ((url === undefined) === (body === undefined)) throw new Error("Give exactly one of url or text.");

@@ -7,14 +7,14 @@ const routes = { "https://a.com/robots.txt": { body: "User-agent: GPTBot\nDisall
 const rpc = (id: number, method: string, params?: Record<string, unknown>) => ({ jsonrpc: "2.0", id, method, params });
 
 describe("MCP server", () => {
-  it("initializes and lists exactly five read-only tools", async () => {
+  it("initializes and lists exactly six read-only tools", async () => {
     const s = createMcpServer();
     const init = (await s.handle(rpc(1, "initialize", { protocolVersion: "2025-06-18" }))) as { result: { protocolVersion: string; serverInfo: { name: string } } };
     expect(init.result.protocolVersion).toBe("2025-06-18");
     expect(init.result.serverInfo.name).toBe("crawlerpeek");
     expect(await s.handle({ jsonrpc: "2.0", method: "notifications/initialized" })).toBeNull();
     const list = (await s.handle(rpc(2, "tools/list"))) as { result: { tools: { name: string; annotations: { readOnlyHint: boolean } }[] } };
-    expect(list.result.tools.map((t) => t.name)).toEqual(["check_ai_access", "see_as_bot", "verify_bot_ip", "generate_robots_txt", "lint_robots_txt"]);
+    expect(list.result.tools.map((t) => t.name)).toEqual(["check_ai_access", "see_as_bot", "verify_bot_ip", "generate_robots_txt", "lint_robots_txt", "scan_site"]);
     expect(list.result.tools.every((t) => t.annotations.readOnlyHint)).toBe(true);
   });
   it("tool call round trip over stdio", async () => {
@@ -78,6 +78,21 @@ describe("MCP server", () => {
       expect(r.result.isError, JSON.stringify(bad).slice(0, 40)).toBe(true);
     }
     expect((await call({})).result.content[0].text).toContain("exactly one of url or text");
+  });
+  it("scans a sitemap through the tool and validates its input", async () => {
+    const m = mockFetch({
+      "https://a.com/robots.txt": { body: "User-agent: GPTBot\nDisallow: /p/\nSitemap: https://a.com/sm.xml\n", headers: { "content-type": "text/plain" } },
+      "https://a.com/sm.xml": { body: "<urlset><url><loc>https://a.com/p/1</loc></url><url><loc>https://a.com/q</loc></url></urlset>", headers: { "content-type": "application/xml" } },
+    });
+    const s = createMcpServer({ net: { fetch: m.fetch, resolve: publicResolve, delayMs: 0 } });
+    const call = (args: Record<string, unknown>) => s.handle(rpc(1, "tools/call", { name: "scan_site", arguments: args })) as Promise<{ result: { isError?: boolean; content: { text: string }[]; structuredContent: { urls: { url: string; blockedFor: string[] }[]; summary: { perBot: { bot: string; blocked: number }[] } } } }>;
+    const ok = await call({ url: "https://a.com/", bots: ["GPTBot", "ClaudeBot"], limit: 10 });
+    expect(ok.result.structuredContent.urls).toEqual([{ url: "https://a.com/p/1", blockedFor: ["GPTBot"] }, { url: "https://a.com/q", blockedFor: [] }]);
+    expect(ok.result.structuredContent.summary.perBot).toEqual([{ bot: "GPTBot", blocked: 1 }, { bot: "ClaudeBot", blocked: 0 }]);
+    expect(m.calls.map((c) => c.url)).toEqual(["https://a.com/robots.txt", "https://a.com/sm.xml"]);
+    for (const bad of [{}, { url: "https://a.com/", limit: "5" }, { url: "https://a.com/", limit: 500 }, { url: "https://a.com/", bots: "GPTBot" }, { url: "https://a.com/", bots: ["NopeBot"] }]) {
+      expect((await call(bad)).result.isError, JSON.stringify(bad)).toBe(true);
+    }
   });
   it("rejects unknown tools and methods", async () => {
     const s = createMcpServer();

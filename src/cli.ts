@@ -1,5 +1,6 @@
 import { statSync, readFileSync } from "node:fs";
 import { checkAiAccess, failingBots, seeAsBot, type CheckOptions, type CheckReport, type FailOn } from "./check.js";
+import { scanSite, type ScanReport } from "./scan.js";
 import { lintCounts, lintFails, lintRobotsTxt, lintRobotsUrl, type LintFinding } from "./lint.js";
 import { verifyBotIp } from "./verify.js";
 import { generateRobotsTxt } from "./robotsgen.js";
@@ -13,8 +14,9 @@ Usage
   crawlerpeek see <url> --bot <token> [--json] [--allow-private]
   crawlerpeek verify <ip> [--bot GPTBot] [--json]
   crawlerpeek lint <url|file|-> [--fail-on error|warning] [--json] [--allow-private]
+  crawlerpeek scan <url> [--limit 25] [--bots a,b|all] [--fail-on none|blocked] [--json] [--allow-private]
   crawlerpeek robots [--disallow /admin/,/tmp/] [--block-bots CCBot] [--sitemap <url>]
-  crawlerpeek mcp [--allow-private]          MCP server on stdio (5 read-only tools)
+  crawlerpeek mcp [--allow-private]          MCP server on stdio (6 read-only tools)
 
 check   robots.txt decision per bot plus the HTTP status when the page is fetched with each bot's user-agent string.
         Exit code 0 = ok, 1 = --fail-on condition met, 2 = usage or request error.
@@ -31,6 +33,11 @@ lint    Check a robots.txt (a URL's /robots.txt, a local file, or - for stdin) f
         --fail-on warning      exit 1 on any error or warning (default)
         --fail-on error        exit 1 on errors only
         Exit code 0 = nothing at or above the threshold, 1 = findings, 2 = usage error or the robots.txt could not be fetched.
+scan    robots.txt decision per bot for the URLs in the site's sitemap (from robots.txt, else /sitemap.xml; a sitemap index is followed
+        one level). Reads only robots.txt and the sitemap files, never the pages. Same host only; .gz sitemaps are skipped.
+        --limit <n>            URLs to check, 1 to 200 (default 25)
+        --fail-on blocked      exit 1 when any checked bot is blocked from any URL (default none)
+        Exit code 0 = ok, 1 = --fail-on condition met, 2 = usage or request error, or no URL found in the sitemap.
 verify  Does this IP address really belong to a crawler? Uses only what the operator documents: its published IP-range list
         or forward-confirmed reverse DNS. Without --bot, every bot that has such a method is checked. Never connects to the IP.
         Exit code 0 = verified for at least one bot, 1 = not verified or undecidable (list unreachable, no method), 2 = usage error.
@@ -95,12 +102,28 @@ export function formatTable(r: CheckReport, failed: string[]): string {
   return lines.join("\n");
 }
 
+export function formatScan(r: ScanReport): string {
+  const w = Math.max(3, ...r.summary.perBot.map((b) => b.bot.length));
+  const n = r.summary.urlsChecked;
+  const t = r.robotsTxt;
+  const lines = [r.site, `robots.txt: ${t.state}${t.status ? ` (HTTP ${t.status})` : t.error ? ` (${t.error})` : ""} at ${t.url}`, `${n} URL(s) checked from ${r.sitemaps.filter((s) => s.urls > 0).length} of ${r.sitemaps.length} sitemap file(s)`];
+  for (const s of r.sitemaps) if (s.error) lines.push(`  ${s.url}: ${s.error}`);
+  lines.push("", `${pad("Bot", w)}  Blocked`);
+  for (const b of r.summary.perBot) lines.push(`${pad(b.bot, w)}  ${b.blocked} of ${n}${b.undecided ? " (undecided: too many rules)" : ""}`);
+  for (const b of r.summary.perBot.filter((x) => x.blocked > 0)) {
+    const hit = r.urls.filter((u) => u.blockedFor.includes(b.bot));
+    lines.push("", `${b.bot}: blocked from`, ...hit.slice(0, 10).map((u) => `  ${u.url}`));
+    if (hit.length > 10) lines.push(`  ... and ${hit.length - 10} more`);
+  }
+  return lines.join("\n");
+}
+
 export async function main(argv: string[], io: Io = defaultIo, net: Net = {}): Promise<number> {
   const [cmd, ...rest] = argv;
   try {
     if (!cmd || cmd === "help" || cmd === "--help" || cmd === "-h") { io.out(HELP); return cmd ? 0 : 2; }
     if (cmd === "--version" || cmd === "-v" || cmd === "version") { io.out(VERSION); return 0; }
-    if (rest.includes("--help") && ["mcp", "robots", "see", "check", "verify", "lint"].includes(cmd)) { io.out(HELP); return 0; }
+    if (rest.includes("--help") && ["mcp", "robots", "see", "check", "verify", "lint", "scan"].includes(cmd)) { io.out(HELP); return 0; }
     if (cmd === "mcp") {
       const { flags } = parseArgs(rest, [], ["allow-private"]);
       await serveStdio(process.stdin, process.stdout, { allowPrivate: flags["allow-private"] === true });
@@ -149,6 +172,25 @@ export async function main(argv: string[], io: Io = defaultIo, net: Net = {}): P
         io.out(lines.join("\n"));
       }
       return failed ? 1 : 0;
+    }
+    if (cmd === "scan") {
+      const { flags, pos } = parseArgs(rest, ["limit", "bots", "fail-on"], ["json", "allow-private"]);
+      if (pos.length !== 1) { io.err("Usage: crawlerpeek scan <url> [--limit 25] [--bots a,b|all] [--fail-on none|blocked] [--json]"); return 2; }
+      const failOn = (flags["fail-on"] ?? "none") as string;
+      if (failOn !== "none" && failOn !== "blocked") { io.err(`--fail-on must be none or blocked (got "${failOn}").`); return 2; }
+      if (flags.limit !== undefined && !(typeof flags.limit === "string" && /^\d{1,4}$/.test(flags.limit) && Number(flags.limit) >= 1 && Number(flags.limit) <= 200)) { io.err("--limit must be a whole number from 1 to 200."); return 2; }
+      const bots = list(flags.bots);
+      const report = await scanSite(pos[0], {
+        bots: bots?.length === 1 && bots[0].toLowerCase() === "all" ? "all" : bots,
+        limit: typeof flags.limit === "string" ? Number(flags.limit) : undefined,
+        allowPrivate: flags["allow-private"] === true,
+        ...net,
+      });
+      const failed = failOn === "blocked" ? report.summary.perBot.filter((b) => b.blocked > 0).map((b) => b.bot) : [];
+      io.out(flags.json ? JSON.stringify({ ...report, failOn, failed }, null, 2) : formatScan(report));
+      if (report.summary.urlsChecked === 0) { io.err("No URLs found: the sitemap is missing, empty, gzip-compressed or on another host."); return 2; }
+      if (failed.length) { io.err(`${failed.length} bot(s) blocked from at least one URL: ${failed.join(", ")}`); return 1; }
+      return 0;
     }
     if (cmd === "verify") {
       const { flags, pos } = parseArgs(rest, ["bot"], ["json"]);

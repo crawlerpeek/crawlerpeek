@@ -68,3 +68,48 @@ describe("lint command", () => {
     expect((await run(["lint", "--help"])).out).toContain("lint <url|file|->");
   });
 });
+
+describe("scan command", () => {
+  const robots = "User-agent: GPTBot\nDisallow: /private/\nSitemap: https://a.com/sm.xml\n";
+  const routes = (locs: string[]) => ({
+    "https://a.com/robots.txt": { body: robots, headers: txt },
+    "https://a.com/sm.xml": { body: `<urlset>${locs.map((l) => `<url><loc>${l}</loc></url>`).join("")}</urlset>`, headers: { "content-type": "application/xml" } },
+  });
+  const pages = ["https://a.com/", "https://a.com/private/a", "https://a.com/private/b"];
+  it("prints a per-bot summary and the blocked URLs, exit 0 without --fail-on", async () => {
+    const r = await run(["scan", "https://a.com/", "--bots", "GPTBot,ClaudeBot"], routes(pages));
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(/GPTBot +2 of 3/);
+    expect(r.out).toMatch(/ClaudeBot +0 of 3/);
+    expect(r.out).toContain("GPTBot: blocked from\n  https://a.com/private/a\n  https://a.com/private/b");
+    expect(r.calls.map((c) => c.url)).toEqual(["https://a.com/robots.txt", "https://a.com/sm.xml"]);
+  });
+  it("caps the printed list at 10 URLs per bot", async () => {
+    const many = Array.from({ length: 14 }, (_, i) => `https://a.com/private/${i}`);
+    const r = await run(["scan", "https://a.com/", "--bots", "GPTBot", "--limit", "50"], routes(many));
+    expect(r.out.match(/^ {2}https:\/\/a\.com\/private\//gm)).toHaveLength(10);
+    expect(r.out).toContain("... and 4 more");
+  });
+  it("--fail-on blocked exits 1 when any bot is blocked, 0 when none", async () => {
+    const hit = await run(["scan", "https://a.com/", "--bots", "GPTBot", "--fail-on", "blocked"], routes(pages));
+    expect(hit.code).toBe(1);
+    expect(hit.err).toContain("GPTBot");
+    expect((await run(["scan", "https://a.com/", "--bots", "ClaudeBot", "--fail-on", "blocked"], routes(pages))).code).toBe(0);
+  });
+  it("--json carries the report, failOn and failed", async () => {
+    const j = JSON.parse((await run(["scan", "https://a.com/", "--bots", "GPTBot", "--json", "--fail-on", "blocked"], routes(pages))).out);
+    expect(j).toMatchObject({ site: "https://a.com", failOn: "blocked", failed: ["GPTBot"], summary: { urlsChecked: 3 } });
+  });
+  it("2 when the sitemap yields no URLs, on bad options and private targets", async () => {
+    const empty = await run(["scan", "https://a.com/"], routes([]));
+    expect(empty.code).toBe(2);
+    expect(empty.err).toContain("No URLs found");
+    for (const args of [["scan"], ["scan", "https://a.com/", "--limit", "0"], ["scan", "https://a.com/", "--limit", "201"], ["scan", "https://a.com/", "--limit", "x"], ["scan", "https://a.com/", "--fail-on", "any-non-200"], ["scan", "https://a.com/", "--bots", "NopeBot"], ["scan", "https://a.com/", "--delay", "5"], ["scan", "http://127.0.0.1/"]]) {
+      expect((await run(args, routes(pages))).code, args.join(" ")).toBe(2);
+    }
+  });
+  it("passes --limit on", async () => {
+    const r = await run(["scan", "https://a.com/", "--bots", "GPTBot", "--limit", "2", "--json"], routes(pages));
+    expect(JSON.parse(r.out).urls).toHaveLength(2);
+  });
+});
