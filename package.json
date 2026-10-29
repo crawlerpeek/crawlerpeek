@@ -1,6 +1,6 @@
 {
   "name": "crawlerpeek",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Check whether AI crawlers (GPTBot, ClaudeBot, PerplexityBot, Google-Extended and more) can access your site: robots.txt per bot, live HTTP status as each bot, robots.txt generator, CLI for CI and an MCP server.",
   "keywords": [
     "robots.txt",

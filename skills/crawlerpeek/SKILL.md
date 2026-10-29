@@ -5,7 +5,7 @@ license: MIT
 compatibility: Needs Node.js 20 or newer, network access and a shell (npx), or the crawlerpeek MCP server.
 metadata:
   author: crawlerpeek
-  version: "0.3.0"
+  version: "0.3.1"
   homepage: https://crawlerpeek.com/cli
 ---
 

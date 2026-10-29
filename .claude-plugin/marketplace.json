@@ -7,7 +7,7 @@
       "name": "crawlerpeek",
       "source": "./",
       "description": "Check which AI crawlers can reach a website: an MCP server (npx -y crawlerpeek mcp) and a skill.",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "homepage": "https://crawlerpeek.com/cli",
       "license": "MIT",
       "keywords": ["robots.txt", "ai-crawlers", "geo", "mcp"]

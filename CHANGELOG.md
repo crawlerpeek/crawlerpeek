@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 - 2026-10-29
+
+- Fixed: responses that a server compresses although the request asks for `identity` (gzip, deflate, brotli) are decoded before parsing. www.forbes.com does this for its robots.txt; until now its rules were read as binary data. The 2 MB cap applies to the decoded body.
+- Fixed: `lint` no longer calls real crawlers typos when they are one substituted letter away from a catalogue token (AmazonAdBot, CJBot, SlickBot). A token is reported as a likely typo when it has the same letters with different punctuation (`PerplexityUser`, `GPT-Bot`) or one missing, doubled or swapped letter (`GPTBott`, `GTPBot`).
+- Added: `lint` reports `Content-Signal` (Cloudflare's Content Signals Policy) and `License` (RSL) as `extension-directive` instead of `unknown-field`.
+- Added: `lint` reports a body that is not text as one `not-text` error instead of a finding per line.
+
 ## 0.3.0 - 2026-10-29
 
 - Added: `crawlerpeek lint <url|file|->` and `lintRobotsTxt()` / `lintRobotsUrl()` check a robots.txt for mistakes: HTML served instead of robots.txt, misspelled fields and bot tokens (with a "did you mean" hint), rules before any User-agent, relative paths and sitemap URLs, duplicate or empty groups, directives Google ignores, and a file that blocks every AI crawler. Every finding has a stable `code`, a `severity` and a line number. Exit code `0` nothing at or above `--fail-on` (default `warning`), `1` findings, `2` usage or request error.
@@ -52,6 +59,7 @@ First release.
 - MCP server over stdio (`crawlerpeek mcp`) with three read-only tools.
 - Composite GitHub Action in `action/`.
 
+[0.3.1]: https://github.com/crawlerpeek/crawlerpeek/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/crawlerpeek/crawlerpeek/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/crawlerpeek/crawlerpeek/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/crawlerpeek/crawlerpeek/compare/v0.1.2...v0.1.3
