@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "crawlerpeek",
   "display_name": "Crawlerpeek",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Check which AI crawlers (GPTBot, ClaudeBot, PerplexityBot and more) can access a website: robots.txt plus live HTTP. Read-only.",
   "long_description": "Crawlerpeek tells you whether AI crawlers can reach a page. For each bot it reports the robots.txt decision and what the page returns when fetched with that bot's user-agent string, and it can generate a robots.txt that names AI crawlers explicitly. The tools only fetch the URL you give them; private and internal addresses are refused.",
   "author": { "name": "Crawlerpeek", "url": "https://crawlerpeek.com" },

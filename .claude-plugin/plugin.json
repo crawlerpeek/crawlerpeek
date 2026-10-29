@@ -1,6 +1,6 @@
 {
   "name": "crawlerpeek",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Check which AI crawlers (GPTBot, ClaudeBot, PerplexityBot and more) can reach a website: an MCP server and a skill.",
   "author": { "name": "Crawlerpeek", "url": "https://crawlerpeek.com" },
   "homepage": "https://crawlerpeek.com/cli",

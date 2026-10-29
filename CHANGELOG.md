@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 - 2026-10-29
+
+- Added: `crawlerpeek lint <url|file|->` and `lintRobotsTxt()` / `lintRobotsUrl()` check a robots.txt for mistakes: HTML served instead of robots.txt, misspelled fields and bot tokens (with a "did you mean" hint), rules before any User-agent, relative paths and sitemap URLs, duplicate or empty groups, directives Google ignores, and a file that blocks every AI crawler. Every finding has a stable `code`, a `severity` and a line number. Exit code `0` nothing at or above `--fail-on` (default `warning`), `1` findings, `2` usage or request error.
+- Added: `crawlerpeek scan <url>` and `scanSite()` evaluate robots.txt for the URLs in a site's sitemap (from robots.txt, else `/sitemap.xml`; a sitemap index is followed one level) and report per bot which URLs are blocked. Same-host URLs only, `--limit` 1 to 200 (default 25), `.gz` sitemaps are skipped. No page is fetched: the only requests are robots.txt and at most 10 sitemap files. `--fail-on blocked` exits `1` when any checked bot is blocked from any URL.
+- Added: MCP tools `lint_robots_txt` and `scan_site`.
+- Added: `check --markdown` and `formatMarkdown()` print the result as a GitHub-flavoured Markdown table. `check --summary-file <path>` appends the same Markdown to a file in addition to the normal output.
+- Changed: the GitHub Action writes that Markdown table to the job summary (input `summary`, default `true`). A `version` pinned to 0.2 or older runs without it.
+- Changed: `crawlerpeek mcp` exposes six tools. The robots.txt fetch used by `check` is shared with `lint` and `scan` (`fetchRobots()`); `check` behaves as before.
+
 ## 0.2.0 - 2026-10-25
 
 - Added: an agent skill in `skills/crawlerpeek/` that teaches AI agents when to check AI crawler access, which commands to run and how to read the result. One folder for Claude Code, Claude, Codex, OpenClaw and Hermes.
@@ -43,6 +52,7 @@ First release.
 - MCP server over stdio (`crawlerpeek mcp`) with three read-only tools.
 - Composite GitHub Action in `action/`.
 
+[0.3.0]: https://github.com/crawlerpeek/crawlerpeek/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/crawlerpeek/crawlerpeek/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/crawlerpeek/crawlerpeek/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/crawlerpeek/crawlerpeek/compare/v0.1.1...v0.1.2
