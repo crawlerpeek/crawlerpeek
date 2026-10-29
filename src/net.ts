@@ -3,6 +3,7 @@ import { lookup as dnsPromises } from "node:dns/promises";
 import http from "node:http";
 import https from "node:https";
 import { BlockList, isIP } from "node:net";
+import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 
 export const TIMEOUT_MS = 10_000;
 export const MAX_BODY = 2 * 1024 * 1024;
@@ -151,7 +152,13 @@ function viaNode(url: URL, headers: Record<string, string>, signal: AbortSignal,
       resolve({
         status: res.statusCode ?? 0,
         headers: h,
-        read: async (max) => { const r = await readStream(res, max); res.destroy(); return r; },
+        // Some servers compress although the request asks for identity (www.forbes.com sends gzip); crawlers decode it, so do we.
+        // The cap applies to the decoded bytes, which also bounds a compression bomb.
+        read: async (max) => {
+          const enc = (h["content-encoding"] ?? "").trim().toLowerCase();
+          const dec = enc === "gzip" || enc === "x-gzip" ? createGunzip() : enc === "deflate" ? createInflate() : enc === "br" ? createBrotliDecompress() : null;
+          try { return await readStream(dec ? res.pipe(dec) : res, max); } finally { dec?.destroy(); res.destroy(); }
+        },
       });
     });
     req.on("error", reject);
