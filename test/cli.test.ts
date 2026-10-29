@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -111,5 +111,52 @@ describe("scan command", () => {
   it("passes --limit on", async () => {
     const r = await run(["scan", "https://a.com/", "--bots", "GPTBot", "--limit", "2", "--json"], routes(pages));
     expect(JSON.parse(r.out).urls).toHaveLength(2);
+  });
+});
+
+describe("check --markdown and --summary-file", () => {
+  const routes = {
+    "https://a.com/robots.txt": { body: "User-agent: GPTBot\nDisallow: /\n\nUser-agent: CCBot\nDisallow: /some/\n", headers: txt },
+    "https://a.com/": { body: "<title>Home</title>" },
+  };
+  const args = ["check", "https://a.com/", "--bots", "GPTBot,ClaudeBot,CCBot", "--delay", "0"];
+  it("prints a Markdown table with a heading and a summary line", async () => {
+    const r = await run([...args, "--markdown", "--fail-on", "blocked"], routes);
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/^## AI crawler access: https:\/\/a\.com\/$/m);
+    expect(r.out).toContain("❌ 1 of 3 bot(s) blocked or failing: GPTBot");
+    expect(r.out).toContain("| Bot | robots.txt | HTTP | Result |\n| --- | --- | --- | --- |");
+    expect(r.out).toContain("| GPTBot | blocked | 200 | ❌ fail |");
+    expect(r.out).toContain("| ClaudeBot | allowed | 200 | ✅ ok |");
+    expect(r.out).toContain("| CCBot | allowed\\* | 200 | ✅ ok |");
+    expect(r.out).toContain("\\* allowed for this path");
+  });
+  it("marks a blocked bot even when no --fail-on policy is set, and shows a green line when all is open", async () => {
+    const r = await run([...args, "--markdown"], routes);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("| GPTBot | blocked | 200 | ❌ blocked |");
+    const ok = await run(["check", "https://a.com/", "--bots", "ClaudeBot", "--markdown", "--delay", "0"], routes);
+    expect(ok.out).toContain("✅ No checked bot is blocked (1 bots).");
+  });
+  it("rejects --markdown together with --json before any request", async () => {
+    const r = await run([...args, "--markdown", "--json"], routes);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("cannot be combined");
+    expect(r.calls).toHaveLength(0);
+  });
+  it("appends the Markdown to --summary-file and keeps the normal output", async () => {
+    const p = join(dir, "summary.md");
+    writeFileSync(p, "existing\n");
+    const r = await run([...args, "--json", "--summary-file", p, "--fail-on", "blocked"], routes);
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.out).failed).toEqual(["GPTBot"]);
+    const written = readFileSync(p, "utf8");
+    expect(written.startsWith("existing\n## AI crawler access: https://a.com/")).toBe(true);
+    expect(written).toContain("| GPTBot | blocked | 200 | ❌ fail |");
+    expect((await run([...args, "--summary-file"], routes)).code).toBe(2);
+  });
+  it("escapes Markdown control characters from the URL", async () => {
+    const r = await run(["check", "https://a.com/?q=a|b`c", "--bots", "ClaudeBot", "--markdown", "--no-http"], { "https://a.com/robots.txt": { status: 404, headers: txt } });
+    expect(r.out).toContain("a\\|b\\`c");
   });
 });

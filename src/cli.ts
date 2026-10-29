@@ -1,5 +1,6 @@
-import { statSync, readFileSync } from "node:fs";
+import { appendFileSync, readFileSync, statSync } from "node:fs";
 import { checkAiAccess, failingBots, seeAsBot, type CheckOptions, type CheckReport, type FailOn } from "./check.js";
+import { formatMarkdown } from "./format.js";
 import { scanSite, type ScanReport } from "./scan.js";
 import { lintCounts, lintFails, lintRobotsTxt, lintRobotsUrl, type LintFinding } from "./lint.js";
 import { verifyBotIp } from "./verify.js";
@@ -10,7 +11,7 @@ import { VERSION } from "./version.js";
 const HELP = `crawlerpeek ${VERSION}: can AI crawlers access your site?
 
 Usage
-  crawlerpeek check <url> [--bots a,b|all] [--fail-on none|blocked|any-non-200] [--delay ms] [--json] [--no-http] [--allow-private]
+  crawlerpeek check <url> [--bots a,b|all] [--fail-on none|blocked|any-non-200] [--delay ms] [--json|--markdown] [--summary-file path] [--no-http] [--allow-private]
   crawlerpeek see <url> --bot <token> [--json] [--allow-private]
   crawlerpeek verify <ip> [--bot GPTBot] [--json]
   crawlerpeek lint <url|file|-> [--fail-on error|warning] [--json] [--allow-private]
@@ -25,6 +26,8 @@ check   robots.txt decision per bot plus the HTTP status when the page is fetche
         --fail-on any-non-200  also fail on any other status or failed request
         --delay <ms>           pause between the per-bot requests (default 300)
         --no-http              robots.txt only, no page requests
+        --markdown             print a GitHub-flavoured Markdown table instead of the text table (not with --json)
+        --summary-file <path>  also append that Markdown to a file, for example "$GITHUB_STEP_SUMMARY" in GitHub Actions
 see     Fetch one URL with one bot's user agent (status, redirects, type, size, title, block-page heuristic).
         Exit code 0 = fetched (any HTTP status), 2 = usage error or the request failed.
 lint    Check a robots.txt (a URL's /robots.txt, a local file, or - for stdin) for mistakes: HTML instead of robots.txt, typos in
@@ -200,8 +203,9 @@ export async function main(argv: string[], io: Io = defaultIo, net: Net = {}): P
       return results.some((r) => r.verified) ? 0 : 1;
     }
     if (cmd === "check") {
-      const { flags, pos } = parseArgs(rest, ["bots", "fail-on", "delay"], ["json", "no-http", "allow-private"]);
+      const { flags, pos } = parseArgs(rest, ["bots", "fail-on", "delay", "summary-file"], ["json", "markdown", "no-http", "allow-private"]);
       if (!pos[0]) { io.err("Usage: crawlerpeek check <url> [--bots a,b] [--fail-on blocked|any-non-200] [--json]"); return 2; }
+      if (flags.json && flags.markdown) { io.err("--json and --markdown cannot be combined."); return 2; }
       const failOn = (flags["fail-on"] ?? "none") as string;
       if (!["none", "blocked", "any-non-200"].includes(failOn)) { io.err(`--fail-on must be none, blocked or any-non-200 (got "${failOn}").`); return 2; }
       if (flags.delay !== undefined && !(typeof flags.delay === "string" && /^\d+$/.test(flags.delay))) { io.err("--delay must be a whole number of milliseconds."); return 2; }
@@ -214,7 +218,8 @@ export async function main(argv: string[], io: Io = defaultIo, net: Net = {}): P
         ...net,
       });
       const failed = failingBots(report, failOn as FailOn);
-      io.out(flags.json ? JSON.stringify({ ...report, failOn, failed }, null, 2) : formatTable(report, failed));
+      if (typeof flags["summary-file"] === "string") appendFileSync(flags["summary-file"], formatMarkdown(report, failed) + "\n");
+      io.out(flags.json ? JSON.stringify({ ...report, failOn, failed }, null, 2) : flags.markdown ? formatMarkdown(report, failed).trimEnd() : formatTable(report, failed));
       if (failed.length) { io.err(`${failed.length} bot(s) failed --fail-on ${failOn}: ${failed.join(", ")}`); return 1; }
       return 0;
     }

@@ -16,6 +16,10 @@ inputs:
     description: "blocked, any-non-200 or none."
     required: false
     default: blocked
+  summary:
+    description: "Append a Markdown table of the result to the job summary (needs crawlerpeek 0.3.0 or newer; older pinned versions skip it)."
+    required: false
+    default: "true"
   version:
     description: Version of the crawlerpeek npm package to run.
     required: false
@@ -37,10 +41,12 @@ runs:
         CP_BOTS: ${{ inputs.bots }}
         CP_FAIL_ON: ${{ inputs.fail-on }}
         CP_VERSION: ${{ inputs.version }}
+        CP_SUMMARY: ${{ inputs.summary }}
       run: |
         set +e
         args=(check "$CP_URL" --fail-on "$CP_FAIL_ON" --json)
         if [ -n "$CP_BOTS" ]; then args+=(--bots "$CP_BOTS"); fi
+        case "$CP_VERSION" in 0.[0-2]|0.[0-2].*) ;; *) if [ "$CP_SUMMARY" = "true" ] && [ -n "$GITHUB_STEP_SUMMARY" ]; then args+=(--summary-file "$GITHUB_STEP_SUMMARY"); fi ;; esac
         npx --yes "crawlerpeek@${CP_VERSION}" "${args[@]}" > "$RUNNER_TEMP/crawlerpeek-report.json"
         code=$?
         {

@@ -23,6 +23,7 @@ jobs:
 | `url` | required | Public URL to check |
 | `bots` | 15 main bots | Comma-separated tokens or `all` |
 | `fail-on` | `blocked` | `blocked`, `any-non-200` or `none` |
+| `summary` | `true` | Append a Markdown table of the result to the job summary |
 | `version` | `latest` | npm version of `crawlerpeek` |
 
-Output `report`: the JSON result. The page is fetched from the GitHub runner with each bot's user-agent string, not from the operator's IP ranges; a site that verifies bot IPs may answer differently to the real bot.
+The job summary shows the same result as a table (`check --summary-file`, crawlerpeek 0.3.0 or newer; a `version` pinned to 0.2 or older runs without it). Output `report`: the JSON result. The page is fetched from the GitHub runner with each bot's user-agent string, not from the operator's IP ranges; a site that verifies bot IPs may answer differently to the real bot.
