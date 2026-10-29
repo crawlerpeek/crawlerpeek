@@ -19,13 +19,15 @@ Answers one question: can AI crawlers reach this page? For each bot it reports w
 - "Why doesn't ChatGPT (or Claude, Perplexity) see or cite this page?"
 - "Is my robots.txt blocking AI crawlers?" or "Is my firewall / CDN blocking them?"
 - "Write a robots.txt that allows (or blocks) AI bots."
+- "Is there a mistake in my robots.txt?" (typos, rules in the wrong place, HTML served instead of robots.txt)
+- "Does robots.txt block any page in my sitemap?" or "check my whole site, not one page"
 - "Is this IP in my logs really Googlebot / GPTBot / ClaudeBot?"
 
 Do not use it for general SEO audits, rankings, page speed or content quality.
 
 ## Run it
 
-If the `crawlerpeek` MCP server is connected, use its tools `check_ai_access`, `see_as_bot`, `verify_bot_ip` and `generate_robots_txt` and skip the commands below. Otherwise use the CLI. Always pass a full URL with `https://`.
+If the `crawlerpeek` MCP server is connected, use its tools `check_ai_access`, `see_as_bot`, `verify_bot_ip`, `lint_robots_txt`, `scan_site` and `generate_robots_txt` and skip the commands below. Otherwise use the CLI. Always pass a full URL with `https://`.
 
 ```sh
 # All default bots for one URL: robots.txt decision plus HTTP status per bot
@@ -36,6 +38,12 @@ npx -y crawlerpeek see https://example.com/page --bot ClaudeBot
 
 # Is an IP from the user's logs really the crawler it claims to be?
 npx -y crawlerpeek verify 66.249.66.1 --bot Googlebot --json
+
+# Find mistakes in a robots.txt: a site's /robots.txt, a file, or - for stdin
+npx -y crawlerpeek lint https://example.com --json
+
+# robots.txt per bot for the URLs in the sitemap (no pages are fetched)
+npx -y crawlerpeek scan https://example.com --limit 50 --json
 
 # Draft a robots.txt that names AI crawlers explicitly
 npx -y crawlerpeek robots --disallow /admin/,/cart/ --sitemap https://example.com/sitemap.xml
@@ -63,6 +71,8 @@ Interpret it:
 - robots.txt allowed and HTTP 403 or a challenge page: a firewall, CDN or bot-protection rule blocks the bot. robots.txt is not the cause; the fix is in the WAF or CDN settings.
 - `unknown`: the robots.txt fetch failed. Treat it as a problem to fix. Many crawlers treat an unreachable robots.txt (5xx) as "disallow everything".
 - A 200 with a short or empty page title can mean the content is rendered by JavaScript. Crawlerpeek does not run JavaScript, and many AI crawlers do not either.
+- `lint`: each finding has a `code`, `severity` (`error`, `warning`, `info`) and `line`. Report errors and warnings; mention info findings only when relevant (for example `unsupported-directive` for `Crawl-delay`, which Google ignores). `unknown-agent` and `unknown-field` carry a "did you mean" hint, which is a suggestion, not a certainty. A missing robots.txt (404) has no findings and allows everything. Exit code 1 is a normal result (findings), not a tool error.
+- `scan`: `summary.perBot[].blocked` counts the URLs robots.txt closes for that bot, `urls[].blockedFor` names the bots per URL. It reads robots.txt and the sitemap files only, so it says nothing about what the pages return; use `check` or `see` for that. Only same-host URLs of the first sitemaps are covered, up to `--limit` (max 200); `.gz` sitemaps are skipped (see `sitemaps[].error`).
 - `control` bots (Google-Extended, Applebot-Extended) only get a robots.txt decision.
 - `verify`: `verified: true` means the IP is in the operator's published list or passes forward-confirmed reverse DNS; `false` means every documented method says no, so the request only claimed the name; `null` means it could not be decided (no documented method, or a list could not be fetched). Never call an IP fake on `null`. Exit code 1 from `verify` is a normal result (not verified or undecided), not a tool error.
 
