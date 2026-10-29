@@ -2,12 +2,13 @@ import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import { checkAiAccess, seeAsBot, type CheckOptions } from "./check.js";
 import { verifyBotIp } from "./verify.js";
+import { lintCounts, lintRobotsTxt, lintRobotsUrl } from "./lint.js";
 import { generateRobotsTxt } from "./robotsgen.js";
 import { BOTS } from "./bots.js";
 import { VERSION } from "./version.js";
 
 /**
- * Minimal MCP server over stdio (newline-delimited JSON-RPC 2.0), exactly four read-only tools. No dependencies.
+ * Minimal MCP server over stdio (newline-delimited JSON-RPC 2.0), exactly five read-only tools. No dependencies.
  * Safety: SSRF guard on every request (unless allowPrivate), 10 s timeout, 2 MB body cap, sequential requests, 10 minute cache per call.
  */
 const SUPPORTED = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
@@ -71,6 +72,18 @@ export const TOOLS = [
     },
     annotations: { title: "Generate robots.txt", ...readOnly, openWorldHint: false },
   },
+  {
+    name: "lint_robots_txt",
+    description: "Lint a robots.txt for mistakes: HTML served instead of robots.txt, misspelled fields or bot tokens, rules before any User-agent, relative paths or sitemap URLs, duplicate or empty groups, directives Google ignores, every AI crawler blocked. Give the site's URL (fetches its /robots.txt) or the file's text. Findings carry stable codes, line numbers and a severity.",
+    inputSchema: {
+      type: "object", additionalProperties: false,
+      properties: {
+        url: { type: "string", description: "Public http(s) URL of the site; its /robots.txt is fetched." },
+        text: { type: "string", description: "The robots.txt content to lint, instead of url." },
+      },
+    },
+    annotations: { title: "Lint robots.txt", ...readOnly },
+  },
 ];
 
 const text = (obj: unknown): ToolResult => ({ content: [{ type: "text", text: typeof obj === "string" ? obj : JSON.stringify(obj, null, 2) }], ...(typeof obj === "object" && obj !== null ? { structuredContent: obj as Json } : {}) });
@@ -90,7 +103,7 @@ export function createMcpServer(o: McpOptions = {}) {
 
   async function callTool(name: string, args: Json): Promise<ToolResult> {
     try {
-      const cached = name !== "generate_robots_txt";
+      const cached = name !== "generate_robots_txt" && !(name === "lint_robots_txt" && args.text !== undefined); // pasted text is not worth keeping in memory
       const key = cached ? `${name}:${JSON.stringify(args)}` : "";
       const hit = cached ? cache.get(key) : undefined;
       if (hit && now() - hit.at < CACHE_TTL_MS) return hit.value;
@@ -105,6 +118,16 @@ export function createMcpServer(o: McpOptions = {}) {
         if (typeof args.ip !== "string") throw new Error("ip is required.");
         if (args.bot !== undefined && typeof args.bot !== "string") throw new Error("bot must be a string.");
         result = text({ ip: args.ip, results: await verifyBotIp(args.ip, { bot: args.bot as string | undefined, fetch: net.fetch, resolve: net.resolve }) });
+      } else if (name === "lint_robots_txt") {
+        const { url, text: body } = args;
+        if ((url === undefined) === (body === undefined)) throw new Error("Give exactly one of url or text.");
+        if (url !== undefined && typeof url !== "string") throw new Error("url must be a string.");
+        if (body !== undefined && (typeof body !== "string" || body.length > 2_000_000)) throw new Error("text must be a string of at most 2 MB.");
+        if (typeof body === "string") { const findings = lintRobotsTxt(body); result = text({ source: "text", findings, counts: lintCounts(findings) }); }
+        else {
+          const r = await lintRobotsUrl(url as string, net);
+          result = text({ source: r.url, status: r.status, state: r.state, error: r.error, note: r.note, findings: r.findings, counts: lintCounts(r.findings) });
+        }
       } else if (name === "generate_robots_txt") {
         result = text(generateRobotsTxt({ disallow: strArr(args.disallow, "disallow"), blockBots: strArr(args.block_bots, "block_bots"), sitemap: typeof args.sitemap === "string" ? args.sitemap : undefined }));
       } else {

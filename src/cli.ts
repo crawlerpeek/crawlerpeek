@@ -1,4 +1,6 @@
-import { checkAiAccess, failingBots, seeAsBot, type CheckReport, type FailOn } from "./check.js";
+import { statSync, readFileSync } from "node:fs";
+import { checkAiAccess, failingBots, seeAsBot, type CheckOptions, type CheckReport, type FailOn } from "./check.js";
+import { lintCounts, lintFails, lintRobotsTxt, lintRobotsUrl, type LintFinding } from "./lint.js";
 import { verifyBotIp } from "./verify.js";
 import { generateRobotsTxt } from "./robotsgen.js";
 import { serveStdio } from "./mcp.js";
@@ -10,8 +12,9 @@ Usage
   crawlerpeek check <url> [--bots a,b|all] [--fail-on none|blocked|any-non-200] [--delay ms] [--json] [--no-http] [--allow-private]
   crawlerpeek see <url> --bot <token> [--json] [--allow-private]
   crawlerpeek verify <ip> [--bot GPTBot] [--json]
+  crawlerpeek lint <url|file|-> [--fail-on error|warning] [--json] [--allow-private]
   crawlerpeek robots [--disallow /admin/,/tmp/] [--block-bots CCBot] [--sitemap <url>]
-  crawlerpeek mcp [--allow-private]          MCP server on stdio (4 read-only tools)
+  crawlerpeek mcp [--allow-private]          MCP server on stdio (5 read-only tools)
 
 check   robots.txt decision per bot plus the HTTP status when the page is fetched with each bot's user-agent string.
         Exit code 0 = ok, 1 = --fail-on condition met, 2 = usage or request error.
@@ -22,6 +25,12 @@ check   robots.txt decision per bot plus the HTTP status when the page is fetche
         --no-http              robots.txt only, no page requests
 see     Fetch one URL with one bot's user agent (status, redirects, type, size, title, block-page heuristic).
         Exit code 0 = fetched (any HTTP status), 2 = usage error or the request failed.
+lint    Check a robots.txt (a URL's /robots.txt, a local file, or - for stdin) for mistakes: HTML instead of robots.txt, typos in
+        field names, rules before any User-agent, relative paths or sitemaps, misspelled bot tokens, duplicate or empty groups.
+        One line per finding: line, severity (error, warning, info), code, message.
+        --fail-on warning      exit 1 on any error or warning (default)
+        --fail-on error        exit 1 on errors only
+        Exit code 0 = nothing at or above the threshold, 1 = findings, 2 = usage error or the robots.txt could not be fetched.
 verify  Does this IP address really belong to a crawler? Uses only what the operator documents: its published IP-range list
         or forward-confirmed reverse DNS. Without --bot, every bot that has such a method is checked. Never connects to the IP.
         Exit code 0 = verified for at least one bot, 1 = not verified or undecidable (list unreachable, no method), 2 = usage error.
@@ -29,7 +38,21 @@ Note    The user-agent strings are the bots' own and are sent from this machine,
         A site that verifies bot IPs may answer differently to the real bot. Private/loopback targets are refused unless --allow-private.
 `;
 
-type Io = { out: (s: string) => void; err: (s: string) => void };
+type Io = { out: (s: string) => void; err: (s: string) => void; stdin?: () => Promise<string> };
+/** Network overrides for tests and embedding; the CLI itself uses the built-in transport. */
+type Net = Pick<CheckOptions, "fetch" | "resolve">;
+const MAX_INPUT = 5 * 1024 * 1024;
+
+async function readStdin(): Promise<string> {
+  const parts: Buffer[] = [];
+  let n = 0;
+  for await (const c of process.stdin) {
+    n += (c as Buffer).length;
+    if (n > MAX_INPUT) throw new Error("Input is larger than 5 MB.");
+    parts.push(c as Buffer);
+  }
+  return Buffer.concat(parts).toString("utf8");
+}
 const defaultIo: Io = { out: (s) => process.stdout.write(s + "\n"), err: (s) => process.stderr.write(s + "\n") };
 
 /** Each command lists the options it accepts; anything else is an error, so a typo such as --failon cannot silently pass a CI run. */
@@ -72,12 +95,12 @@ export function formatTable(r: CheckReport, failed: string[]): string {
   return lines.join("\n");
 }
 
-export async function main(argv: string[], io: Io = defaultIo): Promise<number> {
+export async function main(argv: string[], io: Io = defaultIo, net: Net = {}): Promise<number> {
   const [cmd, ...rest] = argv;
   try {
     if (!cmd || cmd === "help" || cmd === "--help" || cmd === "-h") { io.out(HELP); return cmd ? 0 : 2; }
     if (cmd === "--version" || cmd === "-v" || cmd === "version") { io.out(VERSION); return 0; }
-    if (rest.includes("--help") && ["mcp", "robots", "see", "check", "verify"].includes(cmd)) { io.out(HELP); return 0; }
+    if (rest.includes("--help") && ["mcp", "robots", "see", "check", "verify", "lint"].includes(cmd)) { io.out(HELP); return 0; }
     if (cmd === "mcp") {
       const { flags } = parseArgs(rest, [], ["allow-private"]);
       await serveStdio(process.stdin, process.stdout, { allowPrivate: flags["allow-private"] === true });
@@ -91,9 +114,41 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
     if (cmd === "see") {
       const { flags, pos } = parseArgs(rest, ["bot"], ["json", "allow-private"]);
       if (!pos[0] || typeof flags.bot !== "string") { io.err("Usage: crawlerpeek see <url> --bot <token>"); return 2; }
-      const r = await seeAsBot(pos[0], flags.bot, { allowPrivate: flags["allow-private"] === true });
+      const r = await seeAsBot(pos[0], flags.bot, { allowPrivate: flags["allow-private"] === true, ...net });
       io.out(flags.json ? JSON.stringify(r, null, 2) : Object.entries(r).map(([k, v]) => `${pad(k, 12)} ${v === null || v === "" ? "-" : v}`).join("\n"));
       return r.fetched ? 0 : 2;
+    }
+    if (cmd === "lint") {
+      const { flags, pos } = parseArgs(rest, ["fail-on"], ["json", "allow-private"]);
+      if (pos.length !== 1) { io.err("Usage: crawlerpeek lint <url|file|-> [--fail-on error|warning] [--json]"); return 2; }
+      const failOn = (flags["fail-on"] ?? "warning") as string;
+      if (failOn !== "error" && failOn !== "warning") { io.err(`--fail-on must be error or warning (got "${failOn}").`); return 2; }
+      const src = pos[0];
+      let findings: LintFinding[];
+      let head: Record<string, unknown>;
+      let note: string | null = null;
+      const isFile = src !== "-" && (() => { try { return statSync(src).isFile(); } catch { return false; } })();
+      if (src === "-" || isFile) {
+        if (isFile && statSync(src).size > MAX_INPUT) throw new Error("File is larger than 5 MB.");
+        findings = lintRobotsTxt(src === "-" ? await (io.stdin ?? readStdin)() : readFileSync(src, "utf8"));
+        head = { source: src === "-" ? "stdin" : src };
+      } else {
+        const r = await lintRobotsUrl(src, { allowPrivate: flags["allow-private"] === true, ...net });
+        if (r.state === "unavailable") throw new Error(`Could not fetch ${r.url}${r.error ? ` (${r.error})` : ""}.`);
+        findings = r.findings;
+        note = r.note;
+        head = { source: r.url, status: r.status, state: r.state };
+      }
+      const counts = lintCounts(findings);
+      const failed = lintFails(findings, failOn);
+      if (flags.json) io.out(JSON.stringify({ ...head, note, findings, counts, failOn, failed }, null, 2));
+      else {
+        const lines = findings.map((f) => `${pad(f.line === null ? "-" : `L${f.line}`, 6)} ${pad(f.severity, 8)} ${pad(f.code, 24)} ${f.message}`.trimEnd());
+        if (note) lines.push(note);
+        lines.push(findings.length ? `${counts.error} error(s), ${counts.warning} warning(s), ${counts.info} info in ${String(head.source)}` : `No issues found in ${String(head.source)}.`);
+        io.out(lines.join("\n"));
+      }
+      return failed ? 1 : 0;
     }
     if (cmd === "verify") {
       const { flags, pos } = parseArgs(rest, ["bot"], ["json"]);
@@ -114,6 +169,7 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
         http: flags["no-http"] !== true,
         allowPrivate: flags["allow-private"] === true,
         delayMs: typeof flags.delay === "string" ? Number(flags.delay) : undefined,
+        ...net,
       });
       const failed = failingBots(report, failOn as FailOn);
       io.out(flags.json ? JSON.stringify({ ...report, failOn, failed }, null, 2) : formatTable(report, failed));

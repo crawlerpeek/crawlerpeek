@@ -7,14 +7,14 @@ const routes = { "https://a.com/robots.txt": { body: "User-agent: GPTBot\nDisall
 const rpc = (id: number, method: string, params?: Record<string, unknown>) => ({ jsonrpc: "2.0", id, method, params });
 
 describe("MCP server", () => {
-  it("initializes and lists exactly four read-only tools", async () => {
+  it("initializes and lists exactly five read-only tools", async () => {
     const s = createMcpServer();
     const init = (await s.handle(rpc(1, "initialize", { protocolVersion: "2025-06-18" }))) as { result: { protocolVersion: string; serverInfo: { name: string } } };
     expect(init.result.protocolVersion).toBe("2025-06-18");
     expect(init.result.serverInfo.name).toBe("crawlerpeek");
     expect(await s.handle({ jsonrpc: "2.0", method: "notifications/initialized" })).toBeNull();
     const list = (await s.handle(rpc(2, "tools/list"))) as { result: { tools: { name: string; annotations: { readOnlyHint: boolean } }[] } };
-    expect(list.result.tools.map((t) => t.name)).toEqual(["check_ai_access", "see_as_bot", "verify_bot_ip", "generate_robots_txt"]);
+    expect(list.result.tools.map((t) => t.name)).toEqual(["check_ai_access", "see_as_bot", "verify_bot_ip", "generate_robots_txt", "lint_robots_txt"]);
     expect(list.result.tools.every((t) => t.annotations.readOnlyHint)).toBe(true);
   });
   it("tool call round trip over stdio", async () => {
@@ -60,6 +60,24 @@ describe("MCP server", () => {
   it("answers non-object messages with -32600", async () => {
     const s = createMcpServer();
     for (const bad of [null, 5, "x", []]) expect(await s.handle(bad as never)).toMatchObject({ id: null, error: { code: -32600 } });
+  });
+  it("lints a URL or pasted text, and requires exactly one of them", async () => {
+    const m = mockFetch({ "https://a.com/robots.txt": { body: "User-agent: *\nDissallow: /a\n", headers: { "content-type": "text/plain" } } });
+    const s = createMcpServer({ net: { fetch: m.fetch, resolve: publicResolve, delayMs: 0 } });
+    const call = (args: Record<string, unknown>) => s.handle(rpc(1, "tools/call", { name: "lint_robots_txt", arguments: args })) as Promise<{ result: { isError?: boolean; content: { text: string }[]; structuredContent: { source: string; findings: { code: string }[]; counts: Record<string, number> } } }>;
+    const byUrl = await call({ url: "https://a.com/" });
+    expect(byUrl.result.structuredContent).toMatchObject({ source: "https://a.com/robots.txt", counts: { warning: 1 } });
+    expect(byUrl.result.structuredContent.findings.map((f) => f.code)).toContain("unknown-field");
+    await call({ url: "https://a.com/" });
+    expect(m.calls).toHaveLength(1); // cached
+    const byText = await call({ text: "User-agent: *\nDisallow: /\n" });
+    expect(byText.result.structuredContent.source).toBe("text");
+    expect(byText.result.structuredContent.findings.map((f) => f.code)).toEqual(["all-ai-blocked"]);
+    for (const bad of [{}, { url: "https://a.com/", text: "x" }, { url: 5 }, { text: 5 }, { text: "x".repeat(2_000_001) }]) {
+      const r = await call(bad);
+      expect(r.result.isError, JSON.stringify(bad).slice(0, 40)).toBe(true);
+    }
+    expect((await call({})).result.content[0].text).toContain("exactly one of url or text");
   });
   it("rejects unknown tools and methods", async () => {
     const s = createMcpServer();
