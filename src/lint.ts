@@ -12,8 +12,13 @@ export type LintFinding = { line: number | null; severity: "error" | "warning" |
 const MAX_BYTES = 512_000; // Google reads only the first 500 KiB
 const MAX_LINES = 20_000;
 const MAX_FINDINGS = 200;
-const FIELDS = ["user-agent", "allow", "disallow", "sitemap", "crawl-delay", "host", "noindex", "clean-param", "request-rate", "visit-time"];
+const FIELDS = ["user-agent", "allow", "disallow", "sitemap", "crawl-delay", "host", "noindex", "clean-param", "request-rate", "visit-time", "content-signal", "license"];
 const NOT_RFC = new Set(["noindex", "host", "clean-param"]);
+/** Extensions in real use; not RFC 9309, so a crawler that does not know them skips the line. */
+const EXTENSIONS: Record<string, string> = {
+  "content-signal": "Content-Signal (Cloudflare's Content Signals Policy: search, ai-input, ai-train)",
+  license: "License (RSL, Really Simple Licensing: points to a license.xml)",
+};
 const LEGACY = new Set(["anthropic-ai", "claude-web"]);
 const CATALOGUE = BOTS.map((b) => b.token);
 const CLAUDE_DOCS = BOTS.find((b) => b.token === "ClaudeBot")?.docs ?? "";
@@ -47,6 +52,13 @@ export function lintRobotsTxt(text: string): LintFinding[] {
   const head = body.slice(0, 4096).toLowerCase();
   if (body.trimStart().startsWith("<") || head.includes("<html")) {
     add(1, "error", "html-instead-of-robots", "The file looks like an HTML page, not a robots.txt. Servers often answer /robots.txt with a page; crawlers ignore the content.");
+    return out;
+  }
+  const sample = body.slice(0, 4096);
+  let odd = 0;
+  for (let i = 0; i < sample.length; i++) { const c = sample.charCodeAt(i); if (c === 0xfffd || c === 0 || (c < 32 && c !== 9 && c !== 10 && c !== 13)) odd++; }
+  if (sample.length && odd / sample.length > 0.05) {
+    add(1, "error", "not-text", "The file is not plain text (binary or compressed data without a matching Content-Encoding header); crawlers cannot read rules from it.");
     return out;
   }
   if (Buffer.byteLength(body) > MAX_BYTES) add(null, "warning", "too-large", "The file is larger than 500 KiB. Google reads only the first 500 KiB; rules after that are ignored.");
@@ -95,6 +107,8 @@ export function lintRobotsTxt(text: string): LintFinding[] {
       if (!ok) add(n, "warning", "sitemap-not-absolute", `Sitemap value ${show(value)} is not an absolute http(s) URL.`);
     } else if (field === "crawl-delay") {
       add(n, "info", "unsupported-directive", "Crawl-delay is not part of RFC 9309. Google ignores it; some other crawlers honour it.");
+    } else if (EXTENSIONS[field]) {
+      add(n, "info", "extension-directive", `${EXTENSIONS[field]} is an extension, not part of RFC 9309; crawlers that do not support it ignore the line.`);
     } else if (NOT_RFC.has(field)) {
       add(n, "info", "unsupported-directive", `${canonical(field)} is not part of RFC 9309 and Google does not support it.`);
     }
@@ -137,8 +151,28 @@ function lintAgent(value: string, n: number, add: (l: number, s: LintFinding["se
   const t = value.toLowerCase();
   if (!t || t === "*" || CATALOGUE.some((c) => c.toLowerCase() === t)) return;
   if (LEGACY.has(t)) { add(n, "info", "unknown-agent", `${show(value)} is not one of Anthropic's currently documented tokens: ClaudeBot, Claude-User and Claude-SearchBot (${CLAUDE_DOCS}).`); return; }
-  const near = closest(t, CATALOGUE.filter((c) => c[0].toLowerCase() === t[0]), 2, 5); // same first letter: real bots such as DotBot or xAI-SearchBot differ from a catalogue token in one or two letters but are not typos
+  const near = likelyTypo(t);
   if (near) add(n, "info", "unknown-agent", `Unknown user-agent ${show(value)}. Did you mean ${near}?`);
+}
+
+const letters = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+/** One letter missing or doubled, or two neighbours swapped. A substituted letter is not counted: AmazonAdBot, CJBot or SlickBot are real bots one letter away from a catalogue token. */
+function oneSlip(a: string, b: string): boolean {
+  if (a === b) return false;
+  if (a.length === b.length) {
+    const i = [...a].findIndex((c, k) => c !== b[k]);
+    return i >= 0 && i + 1 < a.length && a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2);
+  }
+  const [s, l] = a.length < b.length ? [a, b] : [b, a];
+  if (l.length - s.length !== 1) return false;
+  for (let i = 0; i < l.length; i++) if (l.slice(0, i) + l.slice(i + 1) === s) return true;
+  return false;
+}
+/** A catalogue token the user-agent value most likely meant: same letters with different punctuation (Perplexity-User / PerplexityUser), or one slip (GPTBott, GTPBot). */
+function likelyTypo(t: string): string | null {
+  const lt = letters(t);
+  if (lt.length < 5) return null;
+  return CATALOGUE.find((c) => letters(c) === lt) ?? CATALOGUE.find((c) => oneSlip(lt, letters(c))) ?? null;
 }
 
 export type LintUrlResult = { url: string; status: number | null; state: RobotsState; error: string | null; note: string | null; findings: LintFinding[] };

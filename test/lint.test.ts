@@ -55,6 +55,24 @@ describe("lintRobotsTxt", () => {
   it("does not call other real crawlers typos", () => {
     expect(codes("User-agent: dotbot\nDisallow: /\nUser-agent: xAI-SearchBot\nDisallow: /\n")).not.toContain("unknown-agent");
   });
+  it("flags punctuation and one-letter slips, not real bots one substituted letter away", () => {
+    const msgs = (t: string) => lintRobotsTxt(t).filter((x) => x.code === "unknown-agent").map((x) => x.message);
+    expect(msgs("User-agent: PerplexityUser\nDisallow: /\nUser-agent: GTPBot\nDisallow: /\nUser-agent: Amazon-Bot\nDisallow: /\n")).toEqual([
+      'Unknown user-agent "PerplexityUser". Did you mean Perplexity-User?',
+      'Unknown user-agent "GTPBot". Did you mean GPTBot?',
+      'Unknown user-agent "Amazon-Bot". Did you mean Amazonbot?',
+    ]);
+    expect(msgs("User-agent: AmazonAdBot\nDisallow: /\nUser-agent: CJBot\nDisallow: /\nUser-agent: SlickBot\nDisallow: /\nUser-agent: SpankBot\nDisallow: /\n")).toEqual([]);
+  });
+  it("reports Content-Signal and License as extensions, not as unknown fields", () => {
+    const f = lintRobotsTxt("User-agent: *\nContent-Signal: search=yes, ai-train=no\nAllow: /\nLicense: https://a.com/license.xml\n");
+    expect(f.map((x) => [x.line, x.code])).toEqual([[2, "extension-directive"], [4, "extension-directive"]]);
+    expect(f[0].message).toContain("Content Signals Policy");
+  });
+  it("reports binary or compressed content once instead of line by line", () => {
+    const f = lintRobotsTxt("\u001f\ufffd\b\u0000\u0000\ufffd\ufffd\u0003" + "\ufffd".repeat(200));
+    expect(f.map((x) => x.code)).toEqual(["not-text"]);
+  });
   it("reports empty groups but treats consecutive User-agent lines as one group", () => {
     expect(codes("User-agent: GPTBot\nUser-agent: ClaudeBot\nDisallow: /\n")).not.toContain("empty-group");
     expect(codes("User-agent: GPTBot\nSitemap: https://a.com/s.xml\nUser-agent: ClaudeBot\nDisallow: /\n")).not.toContain("empty-group");

@@ -57,6 +57,7 @@ Exit codes: `0` ok, `1` the `--fail-on` condition was met, `2` usage error (incl
 | Code | Severity | Finding |
 | --- | --- | --- |
 | `html-instead-of-robots` | error | the server answered `/robots.txt` with a web page |
+| `not-text` | error | the file is binary or compressed data, not text |
 | `rule-before-user-agent` | warning | Allow or Disallow before any User-agent line (ignored) |
 | `unknown-field`, `missing-colon` | warning | a misspelled field such as `Dissallow` (with a "did you mean" hint), or a line without `:` |
 | `path-not-absolute` | warning | an Allow or Disallow path that does not start with `/` or `*` |
@@ -64,7 +65,8 @@ Exit codes: `0` ok, `1` the `--fail-on` condition was met, `2` usage error (incl
 | `all-ai-blocked` | warning | every AI training, search and user crawler in the default list is blocked from `/` |
 | `too-large` | warning | more than 500 KiB; Google reads only the first 500 KiB |
 | `unsupported-directive` | info | `Crawl-delay` (Google ignores it), `Noindex`, `Host`, `Clean-param` (not part of RFC 9309) |
-| `unknown-agent` | info | a misspelled bot token (for example `GPTBott`), or the legacy `anthropic-ai` / `claude-web` tokens, which are not among Anthropic's currently documented ones |
+| `extension-directive` | info | `Content-Signal` (Cloudflare's Content Signals Policy) or `License` (RSL): extensions that crawlers without support skip |
+| `unknown-agent` | info | a misspelled bot token (for example `GPTBott` or `PerplexityUser`), or the legacy `anthropic-ai` / `claude-web` tokens, which are not among Anthropic's currently documented ones |
 | `empty-group`, `duplicate-agent` | info | a User-agent group without rules, or the same token in more than one group |
 | `too-many-lines`, `findings-truncated` | info | the file has more than 20 000 lines, or more than 200 findings |
 
