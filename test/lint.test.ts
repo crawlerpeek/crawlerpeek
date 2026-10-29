@@ -52,6 +52,9 @@ describe("lintRobotsTxt", () => {
     expect(f[1].message).toContain("support.claude.com");
     expect(f.every((x) => x.severity === "info")).toBe(true);
   });
+  it("does not call other real crawlers typos", () => {
+    expect(codes("User-agent: dotbot\nDisallow: /\nUser-agent: xAI-SearchBot\nDisallow: /\n")).not.toContain("unknown-agent");
+  });
   it("reports empty groups but treats consecutive User-agent lines as one group", () => {
     expect(codes("User-agent: GPTBot\nUser-agent: ClaudeBot\nDisallow: /\n")).not.toContain("empty-group");
     expect(codes("User-agent: GPTBot\nSitemap: https://a.com/s.xml\nUser-agent: ClaudeBot\nDisallow: /\n")).not.toContain("empty-group");

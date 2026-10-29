@@ -137,7 +137,7 @@ function lintAgent(value: string, n: number, add: (l: number, s: LintFinding["se
   const t = value.toLowerCase();
   if (!t || t === "*" || CATALOGUE.some((c) => c.toLowerCase() === t)) return;
   if (LEGACY.has(t)) { add(n, "info", "unknown-agent", `${show(value)} is not one of Anthropic's currently documented tokens: ClaudeBot, Claude-User and Claude-SearchBot (${CLAUDE_DOCS}).`); return; }
-  const near = closest(t, CATALOGUE, 2, 5);
+  const near = closest(t, CATALOGUE.filter((c) => c[0].toLowerCase() === t[0]), 2, 5); // same first letter: real bots such as DotBot or xAI-SearchBot differ from a catalogue token in one or two letters but are not typos
   if (near) add(n, "info", "unknown-agent", `Unknown user-agent ${show(value)}. Did you mean ${near}?`);
 }
 
