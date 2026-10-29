@@ -1,5 +1,7 @@
 export { checkAiAccess, seeAsBot, selectBots, findBot, failingBots, extractTitle, detectBlock, CLIENT_UA } from "./check.js";
 export type { CheckOptions, CheckReport, BotCheck, SeeAsBotResult, FailOn, HttpOutcome } from "./check.js";
+export { lintRobotsTxt, lintRobotsUrl, lintCounts, lintFails } from "./lint.js";
+export type { LintFinding, LintUrlResult, LintUrlOptions } from "./lint.js";
 export { generateRobotsTxt } from "./robotsgen.js";
 export type { RobotsGenOptions } from "./robotsgen.js";
 export { parseRobots, isAllowed, matchLen, botRobots, evaluateToken, rulesFor } from "./robots.js";

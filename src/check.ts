@@ -149,13 +149,11 @@ const isInputError = (e: unknown) => e instanceof NetError && (e.code === "block
 
 const sleep = (ms: number) => (ms > 0 ? new Promise<void>((r) => setTimeout(r, ms)) : Promise.resolve());
 
-/**
- * For each bot: does robots.txt allow the URL's path, and (unless http:false) what does the page return when fetched with that bot's
- * user agent. One robots.txt request plus at most one page request per bot, sequential, with a short pause.
- */
-export async function checkAiAccess(url: string, opts: CheckOptions = {}): Promise<CheckReport> {
-  const bots = selectBots(opts.bots);
-  const net: NetOptions = { userAgent: CLIENT_UA, accept: "text/plain,*/*;q=0.5", allowPrivate: opts.allowPrivate, resolve: opts.resolve, fetch: opts.fetch, timeoutMs: opts.timeoutMs, maxBytes: 512_000 };
+export type RobotsFetch = { target: URL; robotsUrl: string; state: RobotsState; parsed: Parsed | null; status: number | null; error: string | null; body: string; html: boolean };
+
+/** Fetches `<origin>/robots.txt` with the honest client UA. `html` is true when the server answered with a web page (state "missing", as crawlers see it). Only the supplied URL may throw. */
+export async function fetchRobots(url: string, opts: Pick<CheckOptions, "allowPrivate" | "resolve" | "fetch" | "timeoutMs"> & { maxBytes?: number } = {}): Promise<RobotsFetch> {
+  const net: NetOptions = { userAgent: CLIENT_UA, accept: "text/plain,*/*;q=0.5", allowPrivate: opts.allowPrivate, resolve: opts.resolve, fetch: opts.fetch, timeoutMs: opts.timeoutMs, maxBytes: opts.maxBytes ?? 512_000 };
   let target: URL;
   try { target = new URL(url); } catch { throw new NetError("invalid_url", `Not a valid URL: ${url.slice(0, 200)}`); }
   if (target.protocol !== "http:" && target.protocol !== "https:") throw new NetError("invalid_url", "Only http and https URLs are supported.");
@@ -163,19 +161,32 @@ export async function checkAiAccess(url: string, opts: CheckOptions = {}): Promi
   let state: RobotsState = "unavailable";
   let parsed: Parsed | null = null;
   let status: number | null = null;
-  let robotsError: string | null = null;
+  let error: string | null = null;
+  let body = "";
+  let html = false;
   try {
     const r = await guardedGet(robotsUrl, net);
     status = r.status;
-    const html = /html/i.test(r.contentType) || /^\s*<(!doctype|html)/i.test(r.body);
-    if (r.status >= 500 || r.status === 429) { state = "unavailable"; robotsError = `HTTP ${r.status}`; }
-    else if (r.status >= 300 && r.status < 400) { state = "unavailable"; robotsError = `HTTP ${r.status} without a Location header`; }
+    body = r.body;
+    html = /html/i.test(r.contentType) || /^\s*<(!doctype|html)/i.test(r.body);
+    if (r.status >= 500 || r.status === 429) { state = "unavailable"; error = `HTTP ${r.status}`; }
+    else if (r.status >= 300 && r.status < 400) { state = "unavailable"; error = `HTTP ${r.status} without a Location header`; }
     else if (r.status >= 400 || html) state = "missing";
     else { state = "ok"; parsed = parseRobots(r.body); }
   } catch (e) {
     if (isInputError(e)) throw e;
-    robotsError = e instanceof Error ? clean(e.message, 200) : "request failed";
+    error = e instanceof Error ? clean(e.message, 200) : "request failed";
   }
+  return { target, robotsUrl, state, parsed, status, error, body, html };
+}
+
+/**
+ * For each bot: does robots.txt allow the URL's path, and (unless http:false) what does the page return when fetched with that bot's
+ * user agent. One robots.txt request plus at most one page request per bot, sequential, with a short pause.
+ */
+export async function checkAiAccess(url: string, opts: CheckOptions = {}): Promise<CheckReport> {
+  const bots = selectBots(opts.bots);
+  const { target, robotsUrl, state, parsed, status, error: robotsError } = await fetchRobots(url, opts);
   const path = (target.pathname || "/") + target.search;
   const out: BotCheck[] = [];
   let first = true;
